@@ -10,12 +10,30 @@ import type { ExamSlot } from '../types';
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-// Compute which "study day" today is (cycling 1-5 from lectures start)
-function getCurrentStudyDay(lecturesStart: Date | null): number {
-  if (!lecturesStart) return 1;
-  const today = new Date();
-  const diffDays = Math.floor((today.getTime() - lecturesStart.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return 1;
+/**
+ * Parse "YYYY-MM-DD" as LOCAL midnight.
+ * new Date("2026-01-19") is UTC midnight which shifts the date
+ * backwards in UTC+ timezones — this avoids that entirely.
+ */
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d); // month is 0-indexed
+}
+
+/** Return today stripped to local midnight for pure date arithmetic. */
+function localMidnight(): Date {
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
+/** Compute which study day (1-5) today is, cycling from lectures start. */
+function getCurrentStudyDay(lecturesStartStr: string | null): number {
+  if (!lecturesStartStr) return 1;
+  const start    = parseLocalDate(lecturesStartStr);
+  const today    = localMidnight();
+  const diffMs   = today.getTime() - start.getTime();
+  if (diffMs < 0) return 1;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   return (diffDays % 5) + 1;
 }
 
@@ -44,11 +62,8 @@ export default function StudyPage() {
   });
 
   const activeCalendar = calendars?.find(c => c.level === user?.level && c.semester === user?.semester);
-  const lecturesStart = activeCalendar?.lectures_start_date
-    ? new Date(activeCalendar.lectures_start_date)
-    : null;
-
-  const currentStudyDay = getCurrentStudyDay(lecturesStart);
+  // Pass the raw date string — getCurrentStudyDay parses it as local midnight
+  const currentStudyDay = getCurrentStudyDay(activeCalendar?.lectures_start_date ?? null);
 
   // Group exams by date
   const examsByDate = examSlots?.reduce<Record<string, ExamSlot[]>>((acc, slot) => {
