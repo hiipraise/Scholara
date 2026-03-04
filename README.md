@@ -34,10 +34,8 @@ npm run build
 
 ### Auth Flow (Passwordless)
 1. User enters email
-2. Backend sends 6-digit OTP
-3. User enters OTP → receives JWT
-4. JWT stored in module memory + sessionStorage (no localStorage)
-5. Role (superadmin/admin/student) determined by email on backend
+2. sessionStorage (no localStorage)
+3. Role (superadmin/admin/student) determined by email on backend
 
 ### Key Pages
 - `/auth` — Email
