@@ -80,7 +80,7 @@ function ExamTimetableAdmin() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
   const [newSlot, setNewSlot] = useState({
-    course_id: 0,
+    course_id: '',
     exam_date: '',
     start_time: '09:00',
     end_time: '11:00',
@@ -104,13 +104,13 @@ function ExamTimetableAdmin() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exam-timetable'] });
       toast.success('Exam slot added');
-      setNewSlot(s => ({ ...s, course_id: 0, exam_date: '', venue: '' }));
+      setNewSlot(s => ({ ...s, course_id: '', exam_date: '', venue: '' }));
     },
     onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to add slot'),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminApi.deleteExamSlot(id),
+    mutationFn: (id: string) => adminApi.deleteExamSlot(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['exam-timetable'] });
       toast.success('Slot removed');
@@ -131,10 +131,10 @@ function ExamTimetableAdmin() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <select
             value={newSlot.course_id}
-            onChange={e => setNewSlot(s => ({ ...s, course_id: Number(e.target.value) }))}
+            onChange={e => setNewSlot(s => ({ ...s, course_id: e.target.value }))}
             className="input-field col-span-2 sm:col-span-1"
           >
-            <option value={0}>Select course...</option>
+            <option value="">Select course...</option>
             {courses?.map(c => (
               <option key={c.id} value={c.id}>{c.code} — {c.title}</option>
             ))}
@@ -235,7 +235,7 @@ function StudyCycleAdmin() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [editDays, setEditDays] = useState<{ day_number: number; course_ids: number[] }[]>([]);
+  const [editDays, setEditDays] = useState<{ day_number: number; course_ids: string[] }[]>([]);
 
   const { data: cycle } = useQuery({
     queryKey: ['study-cycle', user?.level, user?.semester],
@@ -269,7 +269,7 @@ function StudyCycleAdmin() {
     setEditing(true);
   }
 
-  function toggleCourse(dayNum: number, courseId: number) {
+  function toggleCourse(dayNum: number, courseId: string) {
     setEditDays(prev =>
       prev.map(d => {
         if (d.day_number !== dayNum) return d;
@@ -519,7 +519,7 @@ function UsersAdmin() {
   const [newUser, setNewUser] = useState({
     email: '', full_name: '', role: 'student', level: '100L', semester: 1,
   });
-  const [editingRole, setEditingRole] = useState<number | null>(null);
+  const [editingRole, setEditingRole] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState('student');
 
   const { data: users } = useQuery({
@@ -539,7 +539,7 @@ function UsersAdmin() {
   });
 
   const roleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: number; role: string }) =>
+    mutationFn: ({ id, role }: { id: string; role: string }) =>
       adminApi.updateUserRole(id, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-users'] });
@@ -549,7 +549,7 @@ function UsersAdmin() {
   });
 
   const deactivateMutation = useMutation({
-    mutationFn: (id: number) => adminApi.deactivateUser(id),
+    mutationFn: (id: string) => adminApi.deactivateUser(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-users'] });
       toast.success('User deactivated');
