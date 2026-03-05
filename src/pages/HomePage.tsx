@@ -22,7 +22,7 @@ const COURSE_COLORS = [
 export default function HomePage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
-  const [filterCourse, setFilterCourse] = useState<number | null>(null);
+  const [filterCourse, setFilterCourse] = useState<string | null>(null);
   const [filterDone, setFilterDone] = useState<'all' | 'pending' | 'done'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -48,7 +48,7 @@ export default function HomePage() {
   });
 
   const markWeekMutation = useMutation({
-    mutationFn: ({ courseId, week, done }: { courseId: number; week: number; done: boolean }) =>
+    mutationFn: ({ courseId, week, done }: { courseId: string; week: number; done: boolean }) =>
       feedApi.markWeekDone(courseId, week, done),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['feed'] });
@@ -58,7 +58,7 @@ export default function HomePage() {
 
   // Build course map with colors
   const courseMap = useMemo(() => {
-    const map: Record<number, { code: string; color: string }> = {};
+    const map: Record<string, { code: string; color: string }> = {};
     courses?.forEach((c, i) => {
       map[c.id] = { code: c.code, color: COURSE_COLORS[i % COURSE_COLORS.length] };
     });
