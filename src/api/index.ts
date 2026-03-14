@@ -35,6 +35,11 @@ export const coursesApi = {
       onUploadProgress: e => { if (e.total && onProgress) onProgress(Math.round(e.loaded / e.total * 100)); },
     });
   },
+  // ── new ──────────────────────────────────────────────────────────────────
+  deletePdf: (courseId: string, pdfId: string) =>
+    apiClient.delete(`/courses/${courseId}/pdfs/${pdfId}`),
+  updatePdfWeek: (courseId: string, pdfId: string, weekNumber: number) =>
+    apiClient.patch(`/courses/${courseId}/pdfs/${pdfId}/week`, { week_number: weekNumber }),
 };
 
 // Admin

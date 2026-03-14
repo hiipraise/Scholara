@@ -1,9 +1,10 @@
+// src/pages/CoursesPage.tsx
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Upload, ChevronDown, ChevronUp, Check,
-  Loader2, FileText, Plus, X, AlertCircle,
+  Loader2, FileText, Plus, X, AlertCircle, Trash2, Pencil,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { coursesApi } from '../api/index';
@@ -16,7 +17,6 @@ const COURSE_COLORS = [
   '#d4604a', '#4aa8af', '#af8a4a', '#6e8a5a',
 ];
 
-// ── Upload queue item ──────────────────────────────────────────────────────
 interface QueueItem {
   id: string;
   file: File;
@@ -26,22 +26,191 @@ interface QueueItem {
   errorMsg?: string;
 }
 
+// ── PDFRow ──────────────────────────────────────────────────────────────────
+function PDFRow({
+  pdf,
+  courseId,
+  isAdmin,
+}: {
+  pdf: CoursePDF;
+  courseId: string;
+  isAdmin: boolean;
+}) {
+  const qc = useQueryClient();
+  const [showSummary, setShowSummary] = useState(false);
+  const [editingWeek, setEditingWeek] = useState(false);
+  const [weekDraft, setWeekDraft]     = useState(pdf.week_number);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => coursesApi.deletePdf(courseId, pdf.id),
+    onSuccess: () => {
+      toast.success('PDF removed');
+      qc.invalidateQueries({ queryKey: ['course-pdfs', courseId] });
+      qc.invalidateQueries({ queryKey: ['courses'] });
+    },
+    onError: () => toast.error('Failed to delete PDF'),
+  });
+
+  const weekMutation = useMutation({
+    mutationFn: (w: number) => coursesApi.updatePdfWeek(courseId, pdf.id, w),
+    onSuccess: (_, w) => {
+      toast.success(`Moved to Week ${w}`);
+      setEditingWeek(false);
+      qc.invalidateQueries({ queryKey: ['course-pdfs', courseId] });
+      qc.invalidateQueries({ queryKey: ['courses'] });
+    },
+    onError: () => toast.error('Failed to update week'),
+  });
+
+  function handleWeekSave() {
+    const clamped = Math.max(1, Math.min(20, weekDraft));
+    if (clamped === pdf.week_number) { setEditingWeek(false); return; }
+    weekMutation.mutate(clamped);
+  }
+
+  function handleWeekKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') handleWeekSave();
+    if (e.key === 'Escape') { setWeekDraft(pdf.week_number); setEditingWeek(false); }
+  }
+
+  return (
+    <div className="rounded-xl border border-cream-200/8 p-3">
+      <div className="flex items-center gap-3">
+        {/* Status icon */}
+        <div className={clsx(
+          'w-7 h-7 rounded-lg flex items-center justify-center shrink-0',
+          pdf.is_processed ? 'bg-accent-sage/15' : 'bg-cream-200/8',
+        )}>
+          {pdf.is_processed
+            ? <Check size={13} className="text-accent-sage" />
+            : <Loader2 size={13} className="text-cream-200/30 animate-spin" />}
+        </div>
+
+        {/* File name + week */}
+        <div className="min-w-0 flex-1">
+          <div className="text-cream-200/80 text-xs font-medium truncate">{pdf.original_name}</div>
+
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {editingWeek ? (
+              <>
+                <span className="text-cream-200/35 text-[10px]">Wk</span>
+                <input
+                  autoFocus
+                  type="number"
+                  value={weekDraft}
+                  min={1}
+                  max={20}
+                  onChange={e => setWeekDraft(Number(e.target.value))}
+                  onKeyDown={handleWeekKeyDown}
+                  className="w-12 text-center bg-cream-200/8 border border-cream-200/20 rounded-lg py-0.5 text-[10px] text-cream-200/80 focus:outline-none focus:border-cream-200/40"
+                />
+                <button
+                  onClick={handleWeekSave}
+                  disabled={weekMutation.isPending}
+                  className="text-accent-sage/70 hover:text-accent-sage text-[10px] transition-colors disabled:opacity-40"
+                >
+                  {weekMutation.isPending ? '…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setWeekDraft(pdf.week_number); setEditingWeek(false); }}
+                  className="text-cream-200/30 hover:text-cream-200/60 text-[10px] transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-cream-200/35 text-[10px]">
+                  Week {pdf.week_number}
+                  {pdf.is_processed ? ' · Processed' : ' · Processing...'}
+                </span>
+                {isAdmin && (
+                  <button
+                    onClick={() => setEditingWeek(true)}
+                    className="text-cream-200/20 hover:text-cream-200/55 transition-colors"
+                    title="Edit week"
+                  >
+                    <Pencil size={9} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Summary toggle */}
+        {pdf.summary && (
+          <button
+            onClick={() => setShowSummary(!showSummary)}
+            className="text-cream-200/30 hover:text-cream-200/60 transition-colors"
+          >
+            {showSummary ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        )}
+
+        {/* Delete (admin only) */}
+        {isAdmin && (
+          <button
+            onClick={() => {
+              if (!confirm(`Delete "${pdf.original_name}"? This cannot be undone.`)) return;
+              deleteMutation.mutate();
+            }}
+            disabled={deleteMutation.isPending}
+            className="text-cream-200/20 hover:text-accent-coral transition-colors disabled:opacity-40 shrink-0"
+            title="Delete PDF"
+          >
+            {deleteMutation.isPending
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Trash2 size={13} />}
+          </button>
+        )}
+      </div>
+
+      {/* Summary panel */}
+      <AnimatePresence>
+        {showSummary && pdf.summary && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden mt-3 pt-3 border-t border-cream-200/8"
+          >
+            <p className="text-cream-200/55 text-xs leading-relaxed mb-2">{pdf.summary}</p>
+            {pdf.key_points && pdf.key_points.length > 0 && (
+              <div>
+                <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">Key Points</div>
+                <ul className="space-y-1">
+                  {pdf.key_points.slice(0, 4).map((kp, i) => (
+                    <li key={i} className="text-cream-200/45 text-xs flex items-start gap-2">
+                      <span className="text-accent-gold/60 mt-0.5">—</span>
+                      {kp}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ── CourseCard ─────────────────────────────────────────────────────────────
 function CourseCard({ course, color, isAdmin }: { course: Course; color: string; isAdmin: boolean }) {
-  const [expanded, setExpanded]   = useState(false);
-  const [queue, setQueue]         = useState<QueueItem[]>([]);
+  const [expanded, setExpanded]       = useState(false);
+  const [queue, setQueue]             = useState<QueueItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef              = useRef<HTMLInputElement>(null);
-  const qc                        = useQueryClient();
+  const fileInputRef                  = useRef<HTMLInputElement>(null);
+  const qc                            = useQueryClient();
 
   const { data: pdfs, isLoading: pdfsLoading } = useQuery({
     queryKey: ['course-pdfs', course.id],
     queryFn: () => coursesApi.getPdfs(course.id).then(r => r.data),
     enabled: expanded,
-    refetchInterval: expanded ? 8000 : false, // poll while expanded for processing status
+    refetchInterval: expanded ? 8000 : false,
   });
 
-  // Add files to the queue
   function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -53,7 +222,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
       progress: 0,
     }));
     setQueue(prev => [...prev, ...newItems]);
-    // Reset input so the same file can be re-picked if needed
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -71,23 +239,22 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
     setIsUploading(true);
 
     for (const item of pending) {
-      // Mark uploading
       setQueue(prev => prev.map(it =>
-        it.id === item.id ? { ...it, status: 'uploading', progress: 0 } : it
+        it.id === item.id ? { ...it, status: 'uploading', progress: 0 } : it,
       ));
       try {
-        await coursesApi.uploadPdf(course.id, item.week, item.file, (pct) => {
+        await coursesApi.uploadPdf(course.id, item.week, item.file, pct => {
           setQueue(prev => prev.map(it =>
-            it.id === item.id ? { ...it, progress: pct } : it
+            it.id === item.id ? { ...it, progress: pct } : it,
           ));
         });
         setQueue(prev => prev.map(it =>
-          it.id === item.id ? { ...it, status: 'done', progress: 100 } : it
+          it.id === item.id ? { ...it, status: 'done', progress: 100 } : it,
         ));
       } catch (err: any) {
         const msg = err?.response?.data?.detail || 'Upload failed';
         setQueue(prev => prev.map(it =>
-          it.id === item.id ? { ...it, status: 'error', errorMsg: msg } : it
+          it.id === item.id ? { ...it, status: 'error', errorMsg: msg } : it,
         ));
         toast.error(`${item.file.name}: ${msg}`);
       }
@@ -96,11 +263,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
     qc.invalidateQueries({ queryKey: ['course-pdfs', course.id] });
     qc.invalidateQueries({ queryKey: ['courses'] });
     setIsUploading(false);
-
-    const successCount = queue.filter(it => it.status === 'done').length + pending.filter(() => true).length;
-    const doneNow = queue.filter(it =>
-      it.status === 'done' || pending.find(p => p.id === it.id)
-    ).length;
     toast.success(`${pending.length} PDF${pending.length > 1 ? 's' : ''} uploaded — AI processing started`);
   }
 
@@ -108,8 +270,7 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
     setQueue(prev => prev.filter(it => it.status !== 'done'));
   }
 
-  const pendingCount  = queue.filter(it => it.status === 'pending').length;
-  const uploadingItem = queue.find(it => it.status === 'uploading');
+  const pendingCount = queue.filter(it => it.status === 'pending').length;
 
   return (
     <motion.div layout className="card overflow-hidden" style={{ borderLeft: `2px solid ${color}30` }}>
@@ -153,8 +314,7 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
           )}
           {expanded
             ? <ChevronUp size={16} className="text-cream-200/40" />
-            : <ChevronDown size={16} className="text-cream-200/40" />
-          }
+            : <ChevronDown size={16} className="text-cream-200/40" />}
         </div>
       </button>
 
@@ -170,14 +330,13 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
           >
             <div className="p-5 space-y-5">
 
-              {/* ── Upload section (admin only) ── */}
+              {/* Upload section — admin only */}
               {isAdmin && (
                 <div className="p-4 rounded-xl bg-cream-200/4 border border-cream-200/10 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-cream-200/60 text-xs font-semibold uppercase tracking-wider">
                       Upload PDFs
                     </span>
-                    {/* Add files button */}
                     <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-200/15 text-cream-200/55 hover:text-cream-200/80 hover:border-cream-200/25 cursor-pointer transition-colors text-xs">
                       <Plus size={12} />
                       Add Files
@@ -192,18 +351,16 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                     </label>
                   </div>
 
-                  {/* Queue list */}
                   {queue.length > 0 && (
                     <div className="space-y-2">
                       {queue.map(item => (
                         <div key={item.id} className={clsx(
                           'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors',
-                          item.status === 'done'  && 'border-accent-sage/20 bg-accent-sage/5',
-                          item.status === 'error' && 'border-accent-coral/20 bg-accent-coral/5',
+                          item.status === 'done'      && 'border-accent-sage/20 bg-accent-sage/5',
+                          item.status === 'error'     && 'border-accent-coral/20 bg-accent-coral/5',
                           item.status === 'uploading' && 'border-cream-200/15 bg-cream-200/5',
                           item.status === 'pending'   && 'border-cream-200/10',
                         )}>
-                          {/* Status icon */}
                           <div className="shrink-0">
                             {item.status === 'done'      && <Check size={14} className="text-accent-sage" />}
                             {item.status === 'error'     && <AlertCircle size={14} className="text-accent-coral" />}
@@ -211,7 +368,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                             {item.status === 'pending'   && <FileText size={14} className="text-cream-200/30" />}
                           </div>
 
-                          {/* File name */}
                           <div className="flex-1 min-w-0">
                             <div className="text-cream-200/75 text-xs font-medium truncate">
                               {item.file.name}
@@ -230,7 +386,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                             )}
                           </div>
 
-                          {/* Week selector — only editable when pending */}
                           {item.status === 'pending' ? (
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-cream-200/30 text-[10px]">Wk</span>
@@ -247,7 +402,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                             <span className="text-cream-200/30 text-[10px] shrink-0">Wk {item.week}</span>
                           )}
 
-                          {/* Remove — only pending/error */}
                           {(item.status === 'pending' || item.status === 'error') && (
                             <button
                               onClick={() => removeItem(item.id)}
@@ -261,14 +415,12 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                     </div>
                   )}
 
-                  {/* Empty state */}
                   {queue.length === 0 && (
                     <p className="text-cream-200/25 text-xs text-center py-2">
                       Click "Add Files" to select one or more PDFs
                     </p>
                   )}
 
-                  {/* Action buttons */}
                   {queue.length > 0 && (
                     <div className="flex items-center gap-3 pt-1">
                       {pendingCount > 0 && (
@@ -281,15 +433,11 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                         >
                           {isUploading
                             ? <><Loader2 size={14} className="animate-spin" /> Uploading...</>
-                            : <><Upload size={14} /> Upload {pendingCount} PDF{pendingCount > 1 ? 's' : ''}</>
-                          }
+                            : <><Upload size={14} /> Upload {pendingCount} PDF{pendingCount > 1 ? 's' : ''}</>}
                         </motion.button>
                       )}
                       {queue.some(it => it.status === 'done') && !isUploading && (
-                        <button
-                          onClick={clearDone}
-                          className="text-cream-200/30 hover:text-cream-200/60 text-xs transition-colors"
-                        >
+                        <button onClick={clearDone} className="text-cream-200/30 hover:text-cream-200/60 text-xs transition-colors">
                           Clear done
                         </button>
                       )}
@@ -298,7 +446,7 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                 </div>
               )}
 
-              {/* ── PDF list ── */}
+              {/* PDF list */}
               <div>
                 <div className="text-cream-200/40 text-xs font-semibold uppercase tracking-wider mb-3">
                   Uploaded PDFs ({pdfs?.length ?? 0})
@@ -309,7 +457,14 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
                   </div>
                 ) : pdfs && pdfs.length > 0 ? (
                   <div className="space-y-2">
-                    {pdfs.map(pdf => <PDFRow key={pdf.id} pdf={pdf} />)}
+                    {pdfs.map(pdf => (
+                      <PDFRow
+                        key={pdf.id}
+                        pdf={pdf}
+                        courseId={course.id}   // ← new
+                        isAdmin={isAdmin}       // ← new
+                      />
+                    ))}
                   </div>
                 ) : (
                   <p className="text-cream-200/25 text-sm">No PDFs uploaded yet.</p>
@@ -320,68 +475,6 @@ function CourseCard({ course, color, isAdmin }: { course: Course; color: string;
         )}
       </AnimatePresence>
     </motion.div>
-  );
-}
-
-// ── PDFRow ──────────────────────────────────────────────────────────────────
-function PDFRow({ pdf }: { pdf: CoursePDF }) {
-  const [showSummary, setShowSummary] = useState(false);
-
-  return (
-    <div className="rounded-xl border border-cream-200/8 p-3">
-      <div className="flex items-center gap-3">
-        <div className={clsx(
-          'w-7 h-7 rounded-lg flex items-center justify-center shrink-0',
-          pdf.is_processed ? 'bg-accent-sage/15' : 'bg-cream-200/8'
-        )}>
-          {pdf.is_processed
-            ? <Check size={13} className="text-accent-sage" />
-            : <Loader2 size={13} className="text-cream-200/30 animate-spin" />
-          }
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-cream-200/80 text-xs font-medium truncate">{pdf.original_name}</div>
-          <div className="text-cream-200/35 text-[10px] mt-0.5">
-            Week {pdf.week_number}
-            {pdf.is_processed ? ' · Processed' : ' · Processing...'}
-          </div>
-        </div>
-        {pdf.summary && (
-          <button
-            onClick={() => setShowSummary(!showSummary)}
-            className="text-cream-200/30 hover:text-cream-200/60 transition-colors"
-          >
-            {showSummary ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {showSummary && pdf.summary && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden mt-3 pt-3 border-t border-cream-200/8"
-          >
-            <p className="text-cream-200/55 text-xs leading-relaxed mb-2">{pdf.summary}</p>
-            {pdf.key_points && pdf.key_points.length > 0 && (
-              <div>
-                <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">Key Points</div>
-                <ul className="space-y-1">
-                  {pdf.key_points.slice(0, 4).map((kp, i) => (
-                    <li key={i} className="text-cream-200/45 text-xs flex items-start gap-2">
-                      <span className="text-accent-gold/60 mt-0.5">—</span>
-                      {kp}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }
 
@@ -437,7 +530,6 @@ export default function CoursesPage() {
         )}
       </motion.div>
 
-      {/* Add course form */}
       <AnimatePresence>
         {showAddCourse && isAdmin && (
           <motion.div
@@ -491,7 +583,6 @@ export default function CoursesPage() {
         )}
       </AnimatePresence>
 
-      {/* Course list */}
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="h-20 shimmer-bg rounded-2xl" />)}
