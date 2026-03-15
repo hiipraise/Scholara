@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
+
+const navItems = ['Home', 'Features', 'About', 'Contact'];
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function AuthPage() {
     try {
       const res = await authApi.signIn(trimmed);
       setAuth(res.data.user, res.data.access_token);
-      toast.success(`Welcome${res.data.user.full_name ? ', ' + res.data.user.full_name : ''}`);
+      toast.success(`Welcome${res.data.user.full_name ? `, ${res.data.user.full_name}` : ''}`);
       navigate('/');
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Sign-in failed. Try again.');
@@ -30,102 +31,77 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-indigo-600 bg-grid-pattern flex items-center justify-center px-4 relative overflow-hidden">
-      {/* Ambient orbs */}
-      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-cream-200/3 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/3 right-1/4 w-64 h-64 bg-accent-gold/5 rounded-full blur-3xl pointer-events-none" />
-
-      <motion.div
-        initial={{ opacity: 0, y: 28 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-sm"
-      >
-        {/* Brand */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
-          className="text-center mb-10"
-        >
-          <div className="text-cream-200/30 text-[10px] tracking-[0.35em] uppercase font-body mb-3">
-            EdTech Platform
-          </div>
-          <h1 className="font-display text-5xl font-bold text-cream-200 tracking-tight">
-            Scholara
-          </h1>
-          <div className="w-10 h-px bg-cream-200/20 mx-auto mt-5 mb-4" />
-          <p className="text-cream-200/40 text-xs font-body tracking-wide">
-            Powered by <span className="text-cream-200/65">Nexus Core</span>
-          </p>
-        </motion.div>
-
-        {/* Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
+    <div className="min-h-screen bg-[#212842] text-cream-200">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+        <motion.nav
+          initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="card p-8"
+          transition={{ duration: 0.6 }}
+          className="border border-cream-200/10 bg-indigo-900/40 px-4 py-4"
         >
-          <div className="flex items-center gap-3 mb-7">
-            <div className="w-9 h-9 rounded-xl bg-cream-200/8 flex items-center justify-center">
-              <Mail size={16} className="text-cream-200/50" />
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-10">
+            <div className="order-2 flex flex-wrap items-center justify-center gap-5 text-xs uppercase tracking-[0.2em] text-cream-200/55 sm:order-1">
+              {navItems.slice(0, 2).map((item) => (
+                <span key={item}>{item}</span>
+              ))}
             </div>
-            <div>
-              <h2 className="font-display text-xl text-cream-200 font-semibold leading-tight">
-                Sign In
-              </h2>
-              <p className="text-cream-200/35 text-xs mt-0.5 font-body">
-                Enter your email to access your account
-              </p>
+
+            <h1 className="order-1 font-display text-3xl font-semibold tracking-tight sm:order-2">
+              Scholara
+            </h1>
+
+            <div className="order-3 flex flex-wrap items-center justify-center gap-5 text-xs uppercase tracking-[0.2em] text-cream-200/55">
+              {navItems.slice(2).map((item) => (
+                <span key={item}>{item}</span>
+              ))}
             </div>
           </div>
+        </motion.nav>
 
-          <form onSubmit={handleSignIn} className="space-y-4">
-            <div>
-              <label className="block text-cream-200/50 text-xs font-medium mb-2 tracking-wide">
-                Email address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                autoFocus
-                className="input-field font-body text-sm"
-              />
+        <main className="flex flex-1 items-center justify-center py-12 sm:py-16">
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.1 }}
+            className="w-full border border-cream-200/10 bg-indigo-900/30 px-5 py-10 sm:px-10"
+          >
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs uppercase tracking-[0.28em] text-cream-200/50">Learning, structured</p>
+              <h2 className="mt-4 font-display text-4xl leading-tight sm:text-5xl lg:text-6xl">
+                Smarter daily study flow for software engineering students
+              </h2>
+              <p className="mx-auto mt-6 max-w-2xl text-sm text-cream-200/70 sm:text-base">
+                Scholara gives you a focused academic timeline, clear weekly progression, and question-based learning
+                in one calm workspace built for consistency.
+              </p>
+
+              <form onSubmit={handleSignIn} className="mx-auto mt-10 flex w-full max-w-xl flex-col gap-4">
+                <label htmlFor="email" className="text-left text-xs uppercase tracking-[0.14em] text-cream-200/60">
+                  Enter email to continue
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoFocus
+                  className="w-full border border-cream-200/20 bg-indigo-950/50 px-4 py-3 text-sm text-cream-200 outline-none"
+                />
+                <motion.button
+                  type="submit"
+                  disabled={loading || !email.trim()}
+                  whileTap={{ scale: 0.98 }}
+                  className="mt-2 w-full border border-cream-200/20 bg-cream-200 px-6 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-indigo-700 disabled:opacity-40"
+                >
+                  {loading ? 'Signing in...' : 'Start with Scholara'}
+                </motion.button>
+              </form>
             </div>
-
-            <motion.button
-              type="submit"
-              disabled={loading || !email.trim()}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              className="btn-primary w-full flex items-center justify-center gap-2 font-body text-sm mt-2"
-            >
-              {loading ? (
-                <div className="w-4 h-4 border-2 border-indigo-600/30 border-t-indigo-700 rounded-full animate-spin" />
-              ) : (
-                <>
-                  Continue
-                  <ArrowRight size={15} />
-                </>
-              )}
-            </motion.button>
-          </form>
-
-          <p className="text-cream-200/20 text-[11px] text-center mt-6 font-body leading-relaxed">
-            Your email is your identity. No password needed.
-            <br />
-            New emails create a fresh account automatically.
-          </p>
-        </motion.div>
-
-        <p className="text-center text-cream-200/15 text-[10px] mt-5 font-body">
-          BSc. Software Engineering — 100L
-        </p>
-      </motion.div>
+          </motion.section>
+        </main>
+      </div>
     </div>
   );
 }
