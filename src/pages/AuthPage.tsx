@@ -5,8 +5,6 @@ import toast from 'react-hot-toast';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 
-const navItems = ['Home', 'Features', 'About', 'Contact'];
-
 export default function AuthPage() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
@@ -39,22 +37,8 @@ export default function AuthPage() {
           transition={{ duration: 0.6 }}
           className="border border-cream-200/10 bg-indigo-900/40 px-4 py-4"
         >
-          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-10">
-            <div className="order-2 flex flex-wrap items-center justify-center gap-5 text-xs uppercase tracking-[0.2em] text-cream-200/55 sm:order-1">
-              {navItems.slice(0, 2).map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-
-            <h1 className="order-1 font-display text-3xl font-semibold tracking-tight sm:order-2">
-              Scholara
-            </h1>
-
-            <div className="order-3 flex flex-wrap items-center justify-center gap-5 text-xs uppercase tracking-[0.2em] text-cream-200/55">
-              {navItems.slice(2).map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
+          <div className="flex items-center justify-center">
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Scholara</h1>
           </div>
         </motion.nav>
 
