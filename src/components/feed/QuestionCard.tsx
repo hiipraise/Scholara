@@ -11,7 +11,7 @@ interface Props {
   courseCode: string;
   courseColor: string;
   index: number;
-  onAnswered?: (result: AnswerResult) => void;
+  onAnswered?: (question: Question, result: AnswerResult) => void;
 }
 
 const OPTION_KEYS = ['A', 'B', 'C', 'D'] as const;
@@ -38,7 +38,7 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
     try {
       const res = await feedApi.submitAnswer(question.id, key);
       setResult(res.data);
-      onAnswered?.(res.data);
+      onAnswered?.(question, res.data);
       if (res.data.is_correct) {
         toast.success('Correct answer!', { duration: 1500 });
       } else {

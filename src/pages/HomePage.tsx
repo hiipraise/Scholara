@@ -13,6 +13,16 @@ import QuestionCard from '../components/feed/QuestionCard';
 import type { Question } from '../types';
 import toast from 'react-hot-toast';
 
+type AnswerLog = {
+  questionId: string;
+  courseId: string;
+  weekNumber: number;
+  isCorrect: boolean;
+  answeredAt: string;
+};
+
+const ANSWER_LOG_KEY = 'scholara-answer-log-v1';
+
 // Color palette for courses
 const COURSE_COLORS = [
   '#4a7fb5', '#5a8a6e', '#c9a84c', '#8a6eaf',
@@ -25,6 +35,21 @@ export default function HomePage() {
   const [filterCourse, setFilterCourse] = useState<string | null>(null);
   const [filterDone, setFilterDone] = useState<'all' | 'pending' | 'done'>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [practiceMode, setPracticeMode] = useState<'home' | 'focused'>('home');
+  const [focusedCourseIds, setFocusedCourseIds] = useState<string[]>([]);
+  const [focusedCount, setFocusedCount] = useState<30 | 60>(30);
+  const [logVersion, setLogVersion] = useState(0);
+
+  const answerLog = useMemo<AnswerLog[]>(() => {
+    try {
+      const raw = localStorage.getItem(ANSWER_LOG_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as AnswerLog[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [logVersion]);
 
   const { data: feed, isLoading: feedLoading, error: feedError } = useQuery({
     queryKey: ['feed', 'today'],
@@ -69,11 +94,19 @@ export default function HomePage() {
   const displayedQuestions = useMemo(() => {
     if (!feed?.questions) return [];
     let qs = feed.questions;
+
+    if (practiceMode === 'focused') {
+      if (focusedCourseIds.length > 0) {
+        qs = qs.filter(q => focusedCourseIds.includes(q.course_id));
+      }
+      qs = qs.slice(0, focusedCount);
+    }
+
     if (filterCourse !== null) qs = qs.filter(q => q.course_id === filterCourse);
     if (filterDone === 'pending') qs = qs.filter(q => !q.is_completed);
     if (filterDone === 'done') qs = qs.filter(q => q.is_completed);
     return qs;
-  }, [feed, filterCourse, filterDone]);
+  }, [feed, filterCourse, filterDone, practiceMode, focusedCourseIds, focusedCount]);
 
   // Progress groups by course
   const questionsByCourse = useMemo(() => {
@@ -87,6 +120,103 @@ export default function HomePage() {
 
   const currentWeek = progress?.current_academic_week ?? 1;
   const today = format(new Date(), 'EEEE, MMMM d');
+
+  const dailyHistory = useMemo(() => {
+    const grouped = new Map<string, { attempted: number; correct: number }>();
+    answerLog.forEach((item) => {
+      const day = item.answeredAt.slice(0, 10);
+      const current = grouped.get(day) ?? { attempted: 0, correct: 0 };
+      grouped.set(day, {
+        attempted: current.attempted + 1,
+        correct: current.correct + (item.isCorrect ? 1 : 0),
+      });
+    });
+
+    return Array.from(grouped.entries())
+      .map(([date, value]) => ({ date, ...value }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-7);
+  }, [answerLog]);
+
+  const weakLinks = useMemo(() => {
+    const byCourse = new Map<string, { correct: number; incorrect: number }>();
+    const byWeek = new Map<number, { correct: number; incorrect: number }>();
+
+    answerLog.forEach((item) => {
+      const courseStats = byCourse.get(item.courseId) ?? { correct: 0, incorrect: 0 };
+      byCourse.set(item.courseId, {
+        correct: courseStats.correct + (item.isCorrect ? 1 : 0),
+        incorrect: courseStats.incorrect + (item.isCorrect ? 0 : 1),
+      });
+
+      const weekStats = byWeek.get(item.weekNumber) ?? { correct: 0, incorrect: 0 };
+      byWeek.set(item.weekNumber, {
+        correct: weekStats.correct + (item.isCorrect ? 1 : 0),
+        incorrect: weekStats.incorrect + (item.isCorrect ? 0 : 1),
+      });
+    });
+
+    const courseStats = Array.from(byCourse.entries()).map(([courseId, stat]) => ({
+      courseId,
+      ...stat,
+      score: stat.correct - stat.incorrect,
+    }));
+    const weekStats = Array.from(byWeek.entries()).map(([weekNumber, stat]) => ({
+      weekNumber,
+      ...stat,
+      score: stat.correct - stat.incorrect,
+    }));
+
+    return {
+      weakestCourse: courseStats.sort((a, b) => a.score - b.score)[0] ?? null,
+      strongestCourse: courseStats.sort((a, b) => b.score - a.score)[0] ?? null,
+      weakestWeek: weekStats.sort((a, b) => a.score - b.score)[0] ?? null,
+      strongestWeek: weekStats.sort((a, b) => b.score - a.score)[0] ?? null,
+    };
+  }, [answerLog]);
+
+  const streakInfo = useMemo(() => {
+    const answeredDates = new Set(answerLog.map(item => item.answeredAt.slice(0, 10)));
+    let streak = 0;
+    let cursor = new Date();
+
+    while (answeredDates.has(format(cursor, 'yyyy-MM-dd'))) {
+      streak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const missedYesterday = !answeredDates.has(format(yesterday, 'yyyy-MM-dd'));
+
+    return { streak, missedYesterday };
+  }, [answerLog]);
+
+  function toggleFocusedCourse(courseId: string) {
+    setFocusedCourseIds((prev) => prev.includes(courseId)
+      ? prev.filter(id => id !== courseId)
+      : [...prev, courseId]);
+  }
+
+  function recordAnswer(question: Question, isCorrect: boolean) {
+    const nextItem: AnswerLog = {
+      questionId: question.id,
+      courseId: question.course_id,
+      weekNumber: question.week_number,
+      isCorrect,
+      answeredAt: new Date().toISOString(),
+    };
+
+    try {
+      const raw = localStorage.getItem(ANSWER_LOG_KEY);
+      const parsed = raw ? (JSON.parse(raw) as AnswerLog[]) : [];
+      const deduped = parsed.filter(item => item.questionId !== question.id);
+      localStorage.setItem(ANSWER_LOG_KEY, JSON.stringify([...deduped, nextItem]));
+      setLogVersion(v => v + 1);
+    } catch {
+      // no-op: history widgets degrade gracefully when storage is unavailable.
+    }
+  }
 
   if (feedError) {
     return (
@@ -196,6 +326,61 @@ export default function HomePage() {
         </motion.div>
       )}
 
+      {/* History / weak links / streak */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="card p-4">
+          <h3 className="text-sm text-cream-200/75 font-semibold mb-3">History of progress</h3>
+          <div className="space-y-2">
+            {dailyHistory.length === 0 ? (
+              <p className="text-xs text-cream-200/35">Answer questions to start building your history.</p>
+            ) : dailyHistory.map(day => (
+              <div key={day.date} className="flex items-center justify-between text-xs">
+                <span className="text-cream-200/45">{day.date}</span>
+                <span className="text-cream-200/75">{day.correct}/{day.attempted} correct</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card p-4">
+          <h3 className="text-sm text-cream-200/75 font-semibold mb-3">Weak links</h3>
+          <div className="space-y-2 text-xs text-cream-200/65">
+            <div>
+              Weakest course:{' '}
+              <span className="text-accent-coral">
+                {weakLinks.weakestCourse
+                  ? courseMap[weakLinks.weakestCourse.courseId]?.code ?? 'Unknown'
+                  : '—'}
+              </span>
+            </div>
+            <div>
+              Strongest course:{' '}
+              <span className="text-accent-sage">
+                {weakLinks.strongestCourse
+                  ? courseMap[weakLinks.strongestCourse.courseId]?.code ?? 'Unknown'
+                  : '—'}
+              </span>
+            </div>
+            <div>
+              Weakest week: <span className="text-accent-coral">{weakLinks.weakestWeek ? `Week ${weakLinks.weakestWeek.weekNumber}` : '—'}</span>
+            </div>
+            <div>
+              Strongest week: <span className="text-accent-sage">{weakLinks.strongestWeek ? `Week ${weakLinks.strongestWeek.weekNumber}` : '—'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-4">
+          <h3 className="text-sm text-cream-200/75 font-semibold mb-3">Streak</h3>
+          <div className="text-2xl font-mono text-cream-200">{streakInfo.streak} days</div>
+          <p className="text-xs text-cream-200/45 mt-1">
+            {streakInfo.missedYesterday
+              ? 'You missed yesterday — answer today to restart your streak.'
+              : 'Great consistency. Keep your streak alive today.'}
+          </p>
+        </div>
+      </div>
+
       {/* Week Progress Gate */}
       {progress && (
         <motion.div
@@ -249,6 +434,61 @@ export default function HomePage() {
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPracticeMode('home')}
+            className={clsx('badge border text-xs transition-colors',
+              practiceMode === 'home'
+                ? 'bg-cream-200/10 border-cream-200/25 text-cream-200'
+                : 'border-cream-200/10 text-cream-200/40'
+            )}
+          >
+            Home Feed
+          </button>
+          <button
+            onClick={() => setPracticeMode('focused')}
+            className={clsx('badge border text-xs transition-colors',
+              practiceMode === 'focused'
+                ? 'bg-accent-gold/15 border-accent-gold/35 text-accent-gold'
+                : 'border-cream-200/10 text-cream-200/40'
+            )}
+          >
+            Focused Practice
+          </button>
+        </div>
+
+        {practiceMode === 'focused' && (
+          <div className="w-full card p-3 text-xs text-cream-200/65 space-y-2">
+            <p>Home feed stays unchanged. Pick courses and a session size.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {[30, 60].map(count => (
+                <button
+                  key={count}
+                  onClick={() => setFocusedCount(count as 30 | 60)}
+                  className={clsx('badge border', focusedCount === count
+                    ? 'bg-cream-200/10 border-cream-200/25 text-cream-200'
+                    : 'border-cream-200/10 text-cream-200/40')}
+                >
+                  {count} questions
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {courses?.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => toggleFocusedCourse(c.id)}
+                  className={clsx('badge border', focusedCourseIds.includes(c.id)
+                    ? 'bg-cream-200/10 border-cream-200/25 text-cream-200'
+                    : 'border-cream-200/10 text-cream-200/40')}
+                >
+                  {c.code}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button
           onClick={() => setShowFilters(!showFilters)}
           className="flex items-center gap-2 text-cream-200/50 hover:text-cream-200/80 text-sm transition-colors"
@@ -365,7 +605,8 @@ export default function HomePage() {
               courseCode={courseMap[q.course_id]?.code || 'COURSE'}
               courseColor={courseMap[q.course_id]?.color || '#4a7fb5'}
               index={i}
-              onAnswered={() => {
+              onAnswered={(question, result) => {
+                recordAnswer(question, result.is_correct);
                 // Refresh both the feed (progress bar / completed_count) and stats
                 qc.invalidateQueries({ queryKey: ['feed', 'today'] });
                 qc.invalidateQueries({ queryKey: ['feed', 'stats'] });
