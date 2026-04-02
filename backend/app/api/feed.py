@@ -1,10 +1,11 @@
 # app/api/feed.py
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from datetime import datetime, date, timedelta
+from bson import ObjectId
 
 from app.core.deps import get_current_user
-from app.core.database import progress_col, courses_col, attempts_col, calendars_col
+from app.core.database import progress_col, courses_col, attempts_col, questions_col
 from app.services.feed_service import (
     get_or_create_daily_feed, submit_answer,
     get_unlocked_week, get_active_calendar, _academic_week,
@@ -22,6 +23,11 @@ class MarkWeekRequest(BaseModel):
     course_id: str
     week_number: int
     is_done: bool
+
+
+class PracticeRequest(BaseModel):
+    course_ids: list[str] = Field(default_factory=list)
+    count: int = Field(default=30, ge=30, le=60)
 
 
 @router.get("/today")
@@ -99,11 +105,201 @@ async def mark_week_done(body: MarkWeekRequest, current_user: dict = Depends(get
 
 @router.get("/stats")
 async def stats(current_user: dict = Depends(get_current_user)):
-    total   = await attempts_col().count_documents({"user_id": current_user["id"]})
+    total = await attempts_col().count_documents({"user_id": current_user["id"]})
     correct = await attempts_col().count_documents({"user_id": current_user["id"], "is_correct": True})
     return {
         "total_attempted": total,
         "total_correct": correct,
         "accuracy": round(correct / total * 100, 1) if total else 0,
         "total_incorrect": total - correct,
+    }
+
+
+@router.post("/practice")
+async def build_practice_feed(body: PracticeRequest, current_user: dict = Depends(get_current_user)):
+    level = current_user["level"]
+    semester = current_user["semester"]
+    user_id = current_user["id"]
+
+    # Validate courses belong to user's level/semester
+    match = {"level": level, "semester": semester, "is_active": True}
+    if body.course_ids:
+        match["_id"] = {"$in": [ObjectId(cid) for cid in body.course_ids if ObjectId.is_valid(cid)]}
+
+    selected_courses = await courses_col().find(match, {"_id": 1, "code": 1}).to_list(None)
+    if not selected_courses:
+        return {"questions": [], "total": 0, "completed_count": 0, "progress_pct": 0, "is_custom": True}
+
+    # fair distribution across selected courses
+    size = len(selected_courses)
+    base = body.count // size
+    rem = body.count % size
+
+    question_ids: list[str] = []
+    for i, c in enumerate(selected_courses):
+        cid = str(c["_id"])
+        alloc = base + (1 if i < rem else 0)
+        unlocked = await get_unlocked_week(user_id, cid)
+
+        docs = await questions_col().aggregate([
+            {"$match": {"course_id": cid, "week_number": {"$lte": unlocked}, "is_active": True}},
+            {"$sample": {"size": alloc}},
+        ]).to_list(None)
+        question_ids.extend(str(d["_id"]) for d in docs)
+
+    valid_oids = [ObjectId(x) for x in question_ids if ObjectId.is_valid(x)]
+    qdocs = await questions_col().find({"_id": {"$in": valid_oids}}).to_list(None)
+    qmap = {str(d["_id"]): d for d in qdocs}
+
+    questions = []
+    for qid in question_ids:
+        q = qmap.get(qid)
+        if not q:
+            continue
+        questions.append({
+            "id": qid,
+            "course_id": q.get("course_id"),
+            "week_number": q.get("week_number"),
+            "question_text": q.get("question_text"),
+            "question_type": q.get("question_type", "mcq"),
+            "options": q.get("options"),
+            "difficulty": q.get("difficulty", "medium"),
+            "topic": q.get("topic"),
+            "is_completed": False,
+            "correct_answer": None,
+            "explanation": None,
+        })
+
+    return {
+        "feed_date": date.today().isoformat(),
+        "questions": questions,
+        "total": len(questions),
+        "completed_count": 0,
+        "is_fully_completed": False,
+        "progress_pct": 0,
+        "is_custom": True,
+        "requested_count": body.count,
+        "selected_courses": [str(c["_id"]) for c in selected_courses],
+    }
+
+
+@router.get("/history")
+async def progress_history(
+    days: int = Query(default=14, ge=7, le=90),
+    current_user: dict = Depends(get_current_user),
+):
+    uid = current_user["id"]
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+
+    dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    history = []
+    for d in dates:
+        total = await attempts_col().count_documents({"user_id": uid, "feed_date": d})
+        correct = await attempts_col().count_documents({"user_id": uid, "feed_date": d, "is_correct": True})
+        history.append({
+            "date": d,
+            "attempted": total,
+            "correct": correct,
+            "incorrect": total - correct,
+            "accuracy": round(correct / total * 100, 1) if total else 0,
+        })
+
+    return {"days": days, "history": history}
+
+
+@router.get("/insights")
+async def weak_links(current_user: dict = Depends(get_current_user)):
+    uid = current_user["id"]
+
+    course_map = {
+        str(c["_id"]): {"code": c["code"], "title": c["title"]}
+        for c in await courses_col().find({"is_active": True}, {"code": 1, "title": 1}).to_list(None)
+    }
+
+    pipeline = [
+        {"$match": {"user_id": uid}},
+        {"$lookup": {
+            "from": "questions",
+            "let": {"qid": "$question_id"},
+            "pipeline": [
+                {"$match": {"$expr": {"$eq": ["$_id", {"$toObjectId": "$$qid"}]}}},
+                {"$project": {"course_id": 1, "week_number": 1}},
+            ],
+            "as": "q",
+        }},
+        {"$unwind": "$q"},
+        {"$group": {
+            "_id": {"course_id": "$q.course_id", "week_number": "$q.week_number"},
+            "total": {"$sum": 1},
+            "correct": {"$sum": {"$cond": ["$is_correct", 1, 0]}},
+        }},
+    ]
+
+    grouped = await attempts_col().aggregate(pipeline).to_list(None)
+
+    if grouped:
+        for g in grouped:
+            g["accuracy"] = round((g["correct"] / g["total"]) * 100, 1) if g["total"] else 0
+        weakest = min(grouped, key=lambda x: x["accuracy"])
+        strongest = max(grouped, key=lambda x: x["accuracy"])
+
+        def _map(entry: dict):
+            cid = entry["_id"]["course_id"]
+            info = course_map.get(cid, {"code": "COURSE", "title": "Unknown course"})
+            return {
+                "course_id": cid,
+                "course_code": info["code"],
+                "course_title": info["title"],
+                "week_number": entry["_id"]["week_number"],
+                "attempts": entry["total"],
+                "correct": entry["correct"],
+                "accuracy": entry["accuracy"],
+            }
+
+        weak_week = _map(weakest)
+        strong_week = _map(strongest)
+    else:
+        weak_week = None
+        strong_week = None
+
+    # streaks from active attempt days
+    day_docs = await attempts_col().aggregate([
+        {"$match": {"user_id": uid}},
+        {"$group": {"_id": "$feed_date"}},
+        {"$sort": {"_id": 1}},
+    ]).to_list(None)
+
+    active_days = [date.fromisoformat(d["_id"]) for d in day_docs if d.get("_id")]
+    active_set = set(active_days)
+    today = date.today()
+
+    current_streak = 0
+    cursor = today
+    while cursor in active_set:
+        current_streak += 1
+        cursor -= timedelta(days=1)
+
+    longest = 0
+    running = 0
+    prev = None
+    for d in active_days:
+        if prev and (d - prev).days == 1:
+            running += 1
+        else:
+            running = 1
+        longest = max(longest, running)
+        prev = d
+
+    last_14 = [today - timedelta(days=i) for i in range(14)]
+    missed_days = sum(1 for d in last_14 if d not in active_set)
+
+    return {
+        "weakest_week": weak_week,
+        "strongest_week": strong_week,
+        "streak": {
+            "current": current_streak,
+            "longest": longest,
+            "missed_last_14_days": missed_days,
+        },
     }

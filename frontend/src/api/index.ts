@@ -3,7 +3,7 @@ import apiClient from './client';
 import type {
   DailyFeed, AnswerResult, FeedProgress,
   Course, CoursePDF, ExamSlot, StudyCycleDay,
-  AcademicCalendar, User,
+  AcademicCalendar, User, DailyHistoryItem, FeedInsights,
 } from '../types';
 
 // Feed
@@ -16,6 +16,13 @@ export const feedApi = {
     apiClient.post('/feed/mark-week-done', { course_id, week_number, is_done }),
   getStats: () =>
     apiClient.get<{ total_attempted: number; total_correct: number; accuracy: number; total_incorrect: number }>('/feed/stats'),
+
+  getHistory: (days = 14) =>
+    apiClient.get<{ days: number; history: DailyHistoryItem[] }>(`/feed/history`, { params: { days } }),
+  getInsights: () =>
+    apiClient.get<FeedInsights>('/feed/insights'),
+  getPractice: (data: { course_ids: string[]; count: number }) =>
+    apiClient.post<DailyFeed & { is_custom: boolean; requested_count: number; selected_courses: string[] }>('/feed/practice', data),
 };
 
 // Courses

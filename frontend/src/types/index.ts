@@ -104,3 +104,32 @@ export interface AcademicCalendar {
   semester_end_date: string | null;
   is_active: boolean;
 }
+
+
+export interface DailyHistoryItem {
+  date: string;
+  attempted: number;
+  correct: number;
+  incorrect: number;
+  accuracy: number;
+}
+
+export interface WeakWeekInsight {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  week_number: number;
+  attempts: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface FeedInsights {
+  weakest_week: WeakWeekInsight | null;
+  strongest_week: WeakWeekInsight | null;
+  streak: {
+    current: number;
+    longest: number;
+    missed_last_14_days: number;
+  };
+}
