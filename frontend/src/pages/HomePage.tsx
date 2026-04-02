@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   RefreshCw, Filter, ChevronDown, CheckSquare,
-  AlertCircle, BookOpen, Calendar, TrendingUp, Clock
+  AlertCircle, BookOpen, Calendar, TrendingUp, Clock, Flame, Target, Activity
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
@@ -25,6 +25,9 @@ export default function HomePage() {
   const [filterCourse, setFilterCourse] = useState<string | null>(null);
   const [filterDone, setFilterDone] = useState<'all' | 'pending' | 'done'>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [practiceCourseIds, setPracticeCourseIds] = useState<string[]>([]);
+  const [practiceCount, setPracticeCount] = useState<30 | 60>(30);
+  const [customFeed, setCustomFeed] = useState<any | null>(null);
 
   const { data: feed, isLoading: feedLoading, error: feedError } = useQuery({
     queryKey: ['feed', 'today'],
@@ -46,6 +49,14 @@ export default function HomePage() {
     queryKey: ['feed', 'stats'],
     queryFn: () => feedApi.getStats().then(r => r.data),
   });
+  const { data: history } = useQuery({
+    queryKey: ['feed', 'history'],
+    queryFn: () => feedApi.getHistory(14).then(r => r.data),
+  });
+  const { data: insights } = useQuery({
+    queryKey: ['feed', 'insights'],
+    queryFn: () => feedApi.getInsights().then(r => r.data),
+  });
 
   const markWeekMutation = useMutation({
     mutationFn: ({ courseId, week, done }: { courseId: string; week: number; done: boolean }) =>
@@ -53,6 +64,17 @@ export default function HomePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['feed'] });
       toast.success('Progress updated');
+    },
+  });
+  const practiceMutation = useMutation({
+    mutationFn: () =>
+      feedApi.getPractice({
+        course_ids: practiceCourseIds,
+        count: practiceCount,
+      }),
+    onSuccess: ({ data }) => {
+      setCustomFeed(data);
+      toast.success(`Loaded ${data.total} focused questions`);
     },
   });
 
@@ -67,13 +89,14 @@ export default function HomePage() {
 
   // Filter questions
   const displayedQuestions = useMemo(() => {
-    if (!feed?.questions) return [];
-    let qs = feed.questions;
-    if (filterCourse !== null) qs = qs.filter(q => q.course_id === filterCourse);
-    if (filterDone === 'pending') qs = qs.filter(q => !q.is_completed);
-    if (filterDone === 'done') qs = qs.filter(q => q.is_completed);
+    const source = customFeed ?? feed;
+    if (!source?.questions) return [];
+    let qs = source.questions;
+    if (filterCourse !== null) qs = qs.filter((q: Question) => q.course_id === filterCourse);
+    if (filterDone === 'pending') qs = qs.filter((q: Question) => !q.is_completed);
+    if (filterDone === 'done') qs = qs.filter((q: Question) => q.is_completed);
     return qs;
-  }, [feed, filterCourse, filterDone]);
+  }, [feed, customFeed, filterCourse, filterDone]);
 
   // Progress groups by course
   const questionsByCourse = useMemo(() => {
@@ -195,6 +218,111 @@ export default function HomePage() {
           ))}
         </motion.div>
       )}
+
+      {/* Progress history + focus insights */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18 }}
+        className="grid grid-cols-1 md:grid-cols-3 gap-3"
+      >
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Flame size={15} className="text-accent-coral/80" />
+            <h3 className="text-cream-200/70 text-sm font-semibold">Streak</h3>
+          </div>
+          <div className="font-mono text-2xl text-cream-200">{insights?.streak.current ?? 0}d</div>
+          <div className="text-cream-200/35 text-xs mt-1">
+            Longest: {insights?.streak.longest ?? 0}d · Missed(14d): {insights?.streak.missed_last_14_days ?? 14}
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Target size={15} className="text-accent-gold/80" />
+            <h3 className="text-cream-200/70 text-sm font-semibold">Weak Link</h3>
+          </div>
+          {insights?.weakest_week ? (
+            <>
+              <div className="text-cream-200/85 text-sm font-semibold">
+                {insights.weakest_week.course_code} · Wk {insights.weakest_week.week_number}
+              </div>
+              <div className="text-cream-200/35 text-xs mt-1">
+                {insights.weakest_week.accuracy}% ({insights.weakest_week.correct}/{insights.weakest_week.attempts})
+              </div>
+            </>
+          ) : <div className="text-cream-200/35 text-xs">No attempts yet</div>}
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity size={15} className="text-accent-sage/80" />
+            <h3 className="text-cream-200/70 text-sm font-semibold">Strong Link</h3>
+          </div>
+          {insights?.strongest_week ? (
+            <>
+              <div className="text-cream-200/85 text-sm font-semibold">
+                {insights.strongest_week.course_code} · Wk {insights.strongest_week.week_number}
+              </div>
+              <div className="text-cream-200/35 text-xs mt-1">
+                {insights.strongest_week.accuracy}% ({insights.strongest_week.correct}/{insights.strongest_week.attempts})
+              </div>
+            </>
+          ) : <div className="text-cream-200/35 text-xs">No attempts yet</div>}
+        </div>
+      </motion.div>
+
+      {/* Focused practice */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.19 }}
+        className="card p-5"
+      >
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <h3 className="text-cream-200/85 text-sm font-semibold">Focused Practice</h3>
+            <p className="text-cream-200/35 text-xs">Home feed stays as-is. Generate extra 30–60 questions for selected course(s).</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPracticeCount(30)}
+              className={clsx('badge border text-xs', practiceCount === 30 ? 'bg-cream-200/12 border-cream-200/25 text-cream-200' : 'border-cream-200/10 text-cream-200/35')}
+            >
+              30
+            </button>
+            <button
+              onClick={() => setPracticeCount(60)}
+              className={clsx('badge border text-xs', practiceCount === 60 ? 'bg-cream-200/12 border-cream-200/25 text-cream-200' : 'border-cream-200/10 text-cream-200/35')}
+            >
+              60
+            </button>
+            <button onClick={() => setCustomFeed(null)} className="btn-ghost text-xs">Back to Home Feed</button>
+            <button onClick={() => practiceMutation.mutate()} className="btn-primary text-xs" disabled={practiceMutation.isPending}>
+              {practiceMutation.isPending ? 'Generating...' : 'Generate'}
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {courses?.map((c, i) => (
+            <button
+              key={c.id}
+              onClick={() => setPracticeCourseIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+              className="badge border text-xs"
+              style={practiceCourseIds.includes(c.id) ? {
+                background: `${COURSE_COLORS[i % COURSE_COLORS.length]}18`,
+                borderColor: `${COURSE_COLORS[i % COURSE_COLORS.length]}30`,
+                color: COURSE_COLORS[i % COURSE_COLORS.length],
+              } : { borderColor: 'rgba(240,231,213,0.1)', color: 'rgba(240,231,213,0.4)' }}
+            >
+              {c.code}
+            </button>
+          ))}
+        </div>
+        {history?.history?.length ? (
+          <p className="text-cream-200/30 text-xs mt-3">
+            14-day progress history: {history.history.filter(h => h.attempted > 0).length} active day(s).
+          </p>
+        ) : null}
+      </motion.div>
 
       {/* Week Progress Gate */}
       {progress && (
