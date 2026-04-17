@@ -67,6 +67,10 @@ export const adminApi = {
     apiClient.get<AcademicCalendar[]>('/admin/calendar'),
   createCalendar: (data: unknown) =>
     apiClient.post('/admin/calendar', data),
+  updateCalendar: (id: string, data: unknown) =>
+    apiClient.put(`/admin/calendar/${id}`, data),
+  deleteCalendar: (id: string) =>
+    apiClient.delete(`/admin/calendar/${id}`),
 
   listUsers: () => apiClient.get<User[]>('/admin/users'),
   createUser: (data: unknown) => apiClient.post('/admin/users', data),
