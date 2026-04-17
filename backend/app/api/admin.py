@@ -134,6 +134,12 @@ class CalendarIn(BaseModel):
     semester_end_date: Optional[str] = None
 
 
+class CalendarUpdateIn(BaseModel):
+    school_resume_date: str
+    lectures_start_date: str
+    semester_end_date: Optional[str] = None
+
+
 @router.get("/calendar")
 async def get_calendars(current_user: dict = Depends(get_current_user)):
     docs = await calendars_col().find({}).sort([("level", 1), ("semester", 1)]).to_list(None)
@@ -148,6 +154,29 @@ async def create_calendar(body: CalendarIn, admin: dict = Depends(get_admin_user
         upsert=True,
     )
     return {"message": "Calendar saved"}
+
+
+@router.put("/calendar/{calendar_id}")
+async def update_calendar(
+    calendar_id: str,
+    body: CalendarUpdateIn,
+    admin: dict = Depends(get_admin_user),
+):
+    result = await calendars_col().update_one(
+        {"_id": ObjectId(calendar_id)},
+        {"$set": {**body.dict()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Calendar entry not found")
+    return {"message": "Calendar updated"}
+
+
+@router.delete("/calendar/{calendar_id}")
+async def delete_calendar(calendar_id: str, admin: dict = Depends(get_admin_user)):
+    result = await calendars_col().delete_one({"_id": ObjectId(calendar_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Calendar entry not found")
+    return {"message": "Calendar deleted"}
 
 
 # ── Users (SuperAdmin only) ────────────────────────────────────────────────
