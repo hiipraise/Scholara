@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, BookOpen, Flag } from 'lucide-react';
 import clsx from 'clsx';
 import type { Question, AnswerResult } from '../../types';
-import { feedApi } from '../../api/index';
+import { feedApi, questionsApi } from '../../api/index';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -27,6 +27,8 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
   const [result, setResult] = useState<AnswerResult | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [flagging, setFlagging] = useState(false);
+  const [isFlagged, setIsFlagged] = useState(false);
 
   const isAnswered = question.is_completed || !!result;
   const correctAnswer = result?.correct_answer || question.correct_answer;
@@ -49,6 +51,20 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
       setSelected(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFlagQuestion() {
+    if (flagging || isFlagged) return;
+    setFlagging(true);
+    try {
+      await questionsApi.flag(question.id);
+      setIsFlagged(true);
+      toast.success('Question flagged for review', { duration: 1800 });
+    } catch {
+      toast.error('Could not flag question');
+    } finally {
+      setFlagging(false);
     }
   }
 
@@ -83,6 +99,20 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleFlagQuestion}
+            disabled={flagging || isFlagged}
+            className={clsx(
+              'w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
+              isFlagged
+                ? 'bg-accent-coral/20 border-accent-coral/30 text-accent-coral cursor-default'
+                : 'bg-cream-200/4 border-cream-200/10 text-cream-200/40 hover:text-accent-coral hover:border-accent-coral/30'
+            )}
+            title={isFlagged ? 'Question flagged' : 'Flag this question'}
+            aria-label={isFlagged ? 'Question flagged' : 'Flag this question'}
+          >
+            <Flag size={13} />
+          </button>
           <span className={clsx('badge text-[10px] border', DIFFICULTY_STYLES[question.difficulty] || DIFFICULTY_STYLES.medium)}>
             {question.difficulty}
           </span>

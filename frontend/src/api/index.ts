@@ -87,3 +87,9 @@ export const usersApi = {
   getProfile: () => apiClient.get<User>('/users/me'),
   updateProfile: (data: { full_name?: string }) => apiClient.put('/users/me', data),
 };
+
+// Questions
+export const questionsApi = {
+  flag: (questionId: string, reason?: string) =>
+    apiClient.post(`/questions/${questionId}/flag`, { reason }),
+};
