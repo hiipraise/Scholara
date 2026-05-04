@@ -6,7 +6,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import create_indexes, users_col
-from app.api import auth, users, courses, feed, admin, questions
+from app.api import auth, users, courses, feed, admin, questions, intelligence
 
 app = FastAPI(
     title="Scholara API — Nexus Core",
@@ -33,6 +33,7 @@ app.include_router(courses.router,   prefix="/api/courses",   tags=["Courses"])
 app.include_router(feed.router,      prefix="/api/feed",      tags=["Feed"])
 app.include_router(admin.router,     prefix="/api/admin",     tags=["Admin"])
 app.include_router(questions.router, prefix="/api/questions", tags=["Questions"])
+app.include_router(intelligence.router, prefix="/api/intelligence", tags=["Intelligence"])
 
 
 @app.on_event("startup")

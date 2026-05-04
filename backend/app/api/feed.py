@@ -30,6 +30,18 @@ class PracticeRequest(BaseModel):
     count: int = Field(default=30, ge=30, le=60)
 
 
+async def _term_question_ids(level: str, semester: int) -> list[str]:
+    courses = await courses_col().find(
+        {"level": level, "semester": semester, "is_active": True},
+        {"_id": 1},
+    ).to_list(None)
+    if not courses:
+        return []
+    cids = [str(c["_id"]) for c in courses]
+    qids = await questions_col().distinct("_id", {"course_id": {"$in": cids}, "is_active": True})
+    return [str(qid) for qid in qids]
+
+
 @router.get("/today")
 async def today_feed(current_user: dict = Depends(get_current_user)):
     return await get_or_create_daily_feed(current_user)
@@ -47,7 +59,12 @@ async def answer(body: AnswerRequest, current_user: dict = Depends(get_current_u
 async def get_progress(current_user: dict = Depends(get_current_user)):
     level, semester = current_user["level"], current_user["semester"]
     cal = await get_active_calendar(level, semester)
-    current_week = _academic_week(cal.get("lectures_start_date") if cal else None)
+    current_week = _academic_week(
+        cal.get("lectures_start_date") if cal else None,
+        cal.get("semester_end_date") if cal else None,
+    )
+    if current_week < 1:
+        current_week = 1
 
     courses = await courses_col().find(
         {"level": level, "semester": semester, "is_active": True}
@@ -62,13 +79,17 @@ async def get_progress(current_user: dict = Depends(get_current_user)):
             {"week_number": 1}
         ).to_list(None)
         weeks_done = sorted(d["week_number"] for d in done_docs)
-        unlocked = weeks_done[-1] if weeks_done else 1
+        max_done = weeks_done[-1] if weeks_done else 0
+        unlocked = max_done + 1
+        if current_week > 0:
+            unlocked = min(unlocked, current_week)
+        unlocked = max(1, unlocked)
 
         result.append({
             "course_id": cid,
             "course_code": c["code"],
             "course_title": c["title"],
-            "max_done_week": weeks_done[-1] if weeks_done else 0,
+            "max_done_week": max_done,
             "current_academic_week": current_week,
             "unlocked_week": unlocked,
             "weeks_done": weeks_done,
@@ -105,8 +126,18 @@ async def mark_week_done(body: MarkWeekRequest, current_user: dict = Depends(get
 
 @router.get("/stats")
 async def stats(current_user: dict = Depends(get_current_user)):
-    total = await attempts_col().count_documents({"user_id": current_user["id"]})
-    correct = await attempts_col().count_documents({"user_id": current_user["id"], "is_correct": True})
+    level, semester = current_user["level"], current_user["semester"]
+    qids = await _term_question_ids(level, semester)
+    if not qids:
+        return {
+            "total_attempted": 0,
+            "total_correct": 0,
+            "accuracy": 0,
+            "total_incorrect": 0,
+        }
+    base = {"user_id": current_user["id"], "question_id": {"$in": qids}}
+    total = await attempts_col().count_documents(base)
+    correct = await attempts_col().count_documents({**base, "is_correct": True})
     return {
         "total_attempted": total,
         "total_correct": correct,
@@ -189,14 +220,19 @@ async def progress_history(
     current_user: dict = Depends(get_current_user),
 ):
     uid = current_user["id"]
+    level, semester = current_user["level"], current_user["semester"]
+    qids = await _term_question_ids(level, semester)
+    if not qids:
+        return {"days": days, "history": []}
     today = date.today()
     start = today - timedelta(days=days - 1)
 
     dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
     history = []
     for d in dates:
-        total = await attempts_col().count_documents({"user_id": uid, "feed_date": d})
-        correct = await attempts_col().count_documents({"user_id": uid, "feed_date": d, "is_correct": True})
+        base = {"user_id": uid, "feed_date": d, "question_id": {"$in": qids}}
+        total = await attempts_col().count_documents(base)
+        correct = await attempts_col().count_documents({**base, "is_correct": True})
         history.append({
             "date": d,
             "attempted": total,
@@ -211,14 +247,42 @@ async def progress_history(
 @router.get("/insights")
 async def weak_links(current_user: dict = Depends(get_current_user)):
     uid = current_user["id"]
+    level, semester = current_user["level"], current_user["semester"]
+    current_courses = await courses_col().find(
+        {"level": level, "semester": semester, "is_active": True},
+        {"_id": 1, "code": 1, "title": 1},
+    ).to_list(None)
+    current_course_ids = {str(c["_id"]) for c in current_courses}
+    if not current_course_ids:
+        return {
+            "weakest_week": None,
+            "strongest_week": None,
+            "streak": {
+                "current": 0,
+                "longest": 0,
+                "missed_last_14_days": 14,
+            },
+        }
+    qids = await questions_col().distinct("_id", {"course_id": {"$in": list(current_course_ids)}, "is_active": True})
+    qid_strings = [str(qid) for qid in qids]
+    if not qid_strings:
+        return {
+            "weakest_week": None,
+            "strongest_week": None,
+            "streak": {
+                "current": 0,
+                "longest": 0,
+                "missed_last_14_days": 14,
+            },
+        }
 
     course_map = {
         str(c["_id"]): {"code": c["code"], "title": c["title"]}
-        for c in await courses_col().find({"is_active": True}, {"code": 1, "title": 1}).to_list(None)
+        for c in current_courses
     }
 
     pipeline = [
-        {"$match": {"user_id": uid}},
+        {"$match": {"user_id": uid, "question_id": {"$in": qid_strings}}},
         {"$lookup": {
             "from": "questions",
             "let": {"qid": "$question_id"},
@@ -265,7 +329,7 @@ async def weak_links(current_user: dict = Depends(get_current_user)):
 
     # streaks from active attempt days
     day_docs = await attempts_col().aggregate([
-        {"$match": {"user_id": uid}},
+        {"$match": {"user_id": uid, "question_id": {"$in": qid_strings}}},
         {"$group": {"_id": "$feed_date"}},
         {"$sort": {"_id": 1}},
     ]).to_list(None)

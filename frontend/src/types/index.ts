@@ -133,3 +133,43 @@ export interface FeedInsights {
     missed_last_14_days: number;
   };
 }
+
+export interface CourseProfile {
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  profile: {
+    is_formula_heavy?: boolean;
+    mix_targets?: { calculation: number; application: number; theory: number };
+    difficulty_targets?: { easy: number; medium: number; hard: number };
+    explanation_mode?: string;
+  };
+}
+
+export interface CourseTopic {
+  id: string;
+  topic: string;
+  subtopic: string;
+  learning_outcome: string;
+  importance_weight: number;
+  source: string;
+}
+
+export interface CourseFormula {
+  id: string;
+  formula_name: string;
+  expression: string;
+  variables: string[];
+  units: string[];
+  conditions: string;
+  common_mistakes: string[];
+  worked_example: string;
+}
+
+export interface CourseDeepDiveNote {
+  id: string;
+  topic: string;
+  title: string;
+  note: string;
+  references: string[];
+}

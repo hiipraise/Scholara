@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, date
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
 from app.core.database import (
@@ -36,9 +36,13 @@ class ExamSlotIn(BaseModel):
 async def get_exam_timetable(
     level: str = "100L",
     semester: int = 1,
+    include_past: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
-    slots = await exams_col().find({"level": level, "semester": semester}).sort("exam_date", 1).to_list(None)
+    filt: dict = {"level": level, "semester": semester}
+    if not include_past:
+        filt["exam_date"] = {"$gte": date.today().isoformat()}
+    slots = await exams_col().find(filt).sort("exam_date", 1).to_list(None)
     out = []
     for s in slots:
         course = await courses_col().find_one({"_id": ObjectId(s["course_id"])})
@@ -77,16 +81,7 @@ class StudyCycleIn(BaseModel):
     days: List[dict]   # [{day_number: 1, course_ids: ["id1","id2"]}, ...]
 
 
-@router.get("/study-cycle")
-async def get_study_cycle(
-    level: str = "100L",
-    semester: int = 1,
-    current_user: dict = Depends(get_current_user),
-):
-    docs = await cycles_col().find(
-        {"level": level, "semester": semester}
-    ).sort("day_number", 1).to_list(None)
-
+async def _hydrate_cycle_docs(docs: list[dict]) -> list[dict]:
     all_cids = set()
     for d in docs:
         all_cids.update(d.get("course_ids", []))
@@ -102,9 +97,69 @@ async def get_study_cycle(
         {
             "day_number": d["day_number"],
             "courses": [courses_map[cid] for cid in d.get("course_ids", []) if cid in courses_map],
+            "is_auto_generated": d.get("is_auto_generated", False),
         }
         for d in docs
     ]
+
+
+async def _auto_generate_cycle(level: str, semester: int) -> list[dict]:
+    courses = await courses_col().find(
+        {"level": level, "semester": semester, "is_active": True},
+        {"_id": 1},
+    ).to_list(None)
+    if not courses:
+        return []
+    by_day: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    for i, c in enumerate(courses):
+        day = (i % 5) + 1
+        by_day[day].append(str(c["_id"]))
+
+    docs = [
+        {
+            "level": level,
+            "semester": semester,
+            "day_number": day,
+            "course_ids": by_day[day],
+            "is_auto_generated": True,
+            "updated_at": datetime.utcnow(),
+        }
+        for day in range(1, 6)
+    ]
+    await cycles_col().delete_many({"level": level, "semester": semester})
+    await cycles_col().insert_many(docs)
+    return docs
+
+
+@router.get("/study-cycle")
+async def get_study_cycle(
+    level: str = "100L",
+    semester: int = 1,
+    current_user: dict = Depends(get_current_user),
+):
+    docs = await cycles_col().find(
+        {"level": level, "semester": semester}
+    ).sort("day_number", 1).to_list(None)
+    if not docs:
+        docs = await _auto_generate_cycle(level, semester)
+        docs = sorted(docs, key=lambda x: x["day_number"])
+
+    return await _hydrate_cycle_docs(docs)
+
+@router.get("/study-cycle/history")
+async def get_study_cycle_history(current_user: dict = Depends(get_current_user)):
+    docs = await cycles_col().find({}).sort([("level", 1), ("semester", 1), ("day_number", 1)]).to_list(None)
+    grouped: dict[tuple[str, int], list[dict]] = {}
+    for d in docs:
+        key = (d.get("level", "100L"), d.get("semester", 1))
+        grouped.setdefault(key, []).append(d)
+
+    out = []
+    for (level, semester), term_docs in grouped.items():
+        hydrated = await _hydrate_cycle_docs(term_docs)
+        out.append({"level": level, "semester": semester, "days": hydrated})
+    out.sort(key=lambda x: (int(x["level"].replace("L", "")), x["semester"]))
+    return out
 
 
 @router.put("/study-cycle")
@@ -148,9 +203,11 @@ async def get_calendars(current_user: dict = Depends(get_current_user)):
 
 @router.post("/calendar")
 async def create_calendar(body: CalendarIn, admin: dict = Depends(get_admin_user)):
+    end_date = body.semester_end_date
+    active = not end_date or end_date >= date.today().isoformat()
     await calendars_col().update_one(
         {"level": body.level, "semester": body.semester},
-        {"$set": {**body.dict(), "is_active": True, "created_at": datetime.utcnow()}},
+        {"$set": {**body.dict(), "is_active": active, "created_at": datetime.utcnow()}},
         upsert=True,
     )
     return {"message": "Calendar saved"}
@@ -162,9 +219,11 @@ async def update_calendar(
     body: CalendarUpdateIn,
     admin: dict = Depends(get_admin_user),
 ):
+    end_date = body.semester_end_date
+    active = not end_date or end_date >= date.today().isoformat()
     result = await calendars_col().update_one(
         {"_id": ObjectId(calendar_id)},
-        {"$set": {**body.dict()}},
+        {"$set": {**body.dict(), "is_active": active}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Calendar entry not found")

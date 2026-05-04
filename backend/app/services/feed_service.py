@@ -13,7 +13,7 @@ from bson import ObjectId
 
 from app.core.database import (
     questions_col, progress_col, feeds_col,
-    exams_col, calendars_col, courses_col, attempts_col,
+    exams_col, calendars_col, courses_col, attempts_col, profiles_col,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,18 +22,43 @@ FEED_SIZE = 60
 
 # ── Academic Week ──────────────────────────────────────────────────────────
 
-def _academic_week(lectures_start_str: Optional[str]) -> int:
+def _parse_iso(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _academic_week(lectures_start_str: Optional[str], semester_end_str: Optional[str] = None) -> int:
     if not lectures_start_str:
         return 1
-    start = date.fromisoformat(lectures_start_str)
+    start = _parse_iso(lectures_start_str)
+    if not start:
+        return 1
     today = date.today()
     if today < start:
-        return 0
-    return (today - start).days // 7 + 1
+        # Keep week display/use at minimum week 1 to avoid a "stuck at 0" UX.
+        return 1
+    end = _parse_iso(semester_end_str)
+    effective_day = min(today, end) if end else today
+    return (effective_day - start).days // 7 + 1
 
 
 async def get_active_calendar(level: str, semester: int) -> Optional[dict]:
-    return await calendars_col().find_one({"level": level, "semester": semester, "is_active": True})
+    calendar = await calendars_col().find_one({"level": level, "semester": semester, "is_active": True})
+    if not calendar:
+        return None
+
+    end = _parse_iso(calendar.get("semester_end_date"))
+    if end and date.today() > end:
+        await calendars_col().update_one(
+            {"_id": calendar["_id"]},
+            {"$set": {"is_active": False}},
+        )
+        return None
+    return calendar
 
 
 # ── Progress Gate ──────────────────────────────────────────────────────────
@@ -44,7 +69,8 @@ async def get_unlocked_week(user_id: str, course_id: str) -> int:
         {"week_number": 1},
     ).sort("week_number", -1).limit(1)
     doc = await cursor.to_list(1)
-    return doc[0]["week_number"] if doc else 1
+    # Unlock the next academic week after the highest completed week.
+    return (doc[0]["week_number"] + 1) if doc else 1
 
 
 # ── Exam-mode helpers ──────────────────────────────────────────────────────
@@ -70,9 +96,78 @@ async def _today_exam_ids(level: str, semester: int) -> set[str]:
 
 # ── Generate question IDs for a feed ──────────────────────────────────────
 
+def _style_allocations(alloc: int, mix_targets: dict) -> dict[str, int]:
+    if alloc <= 0:
+        return {"calculation": 0, "application": 0, "theory": 0}
+    calc_pct = int(mix_targets.get("calculation", 25))
+    app_pct = int(mix_targets.get("application", 40))
+    theory_pct = int(mix_targets.get("theory", 35))
+    total_pct = max(1, calc_pct + app_pct + theory_pct)
+    base = {
+        "calculation": int(alloc * calc_pct / total_pct),
+        "application": int(alloc * app_pct / total_pct),
+        "theory": int(alloc * theory_pct / total_pct),
+    }
+    remainder = alloc - sum(base.values())
+    order = sorted(base.keys(), key=lambda k: mix_targets.get(k, 0), reverse=True)
+    for i in range(remainder):
+        base[order[i % len(order)]] += 1
+    return base
+
+
+async def _sample_for_course(
+    cid: str,
+    unlocked: int,
+    alloc: int,
+    skip_ids: list[str],
+) -> list[str]:
+    if alloc <= 0:
+        return []
+
+    profile = await profiles_col().find_one({"course_id": cid}) or {}
+    mix_targets = profile.get("mix_targets") or {"calculation": 25, "application": 40, "theory": 35}
+    by_style = _style_allocations(alloc, mix_targets)
+    picked: list[str] = []
+    blocked_ids = list(skip_ids)
+
+    async def _pull(style: Optional[str], size: int):
+        nonlocal blocked_ids, picked
+        if size <= 0:
+            return
+        match = {
+            "course_id": cid,
+            "week_number": {"$lte": unlocked},
+            "is_active": True,
+            **({"question_style": style} if style else {}),
+            **({"_id": {"$nin": [ObjectId(x) for x in blocked_ids if ObjectId.is_valid(x)]}} if blocked_ids else {}),
+        }
+        docs = await questions_col().aggregate([
+            {"$match": match},
+            {"$sample": {"size": size}},
+            {"$project": {"_id": 1}},
+        ]).to_list(None)
+        new_ids = [str(d["_id"]) for d in docs]
+        picked.extend(new_ids)
+        blocked_ids.extend(new_ids)
+
+    await _pull("calculation", by_style["calculation"])
+    await _pull("application", by_style["application"])
+    await _pull("theory", by_style["theory"])
+
+    # Backfill any shortage from any style for resilience.
+    remaining = alloc - len(picked)
+    if remaining > 0:
+        await _pull(None, remaining)
+    return picked[:alloc]
+
+
 async def _build_question_ids(user: dict, exclude: list[str], target: int) -> list[str]:
     level, semester = user["level"], user["semester"]
     user_id = user["id"]
+    active_calendar = await get_active_calendar(level, semester)
+    if not active_calendar:
+        logger.info("No active calendar for %s semester %s", level, semester)
+        return []
 
     courses = await courses_col().find(
         {"level": level, "semester": semester, "is_active": True}, {"_id": 1}
@@ -99,19 +194,7 @@ async def _build_question_ids(user: dict, exclude: list[str], target: int) -> li
 
         unlocked = await get_unlocked_week(user_id, cid)
         skip_ids = exclude + all_ids
-
-        pipeline = [
-            {"$match": {
-                "course_id": cid,
-                "week_number": {"$lte": unlocked},
-                "is_active": True,
-                **({"_id": {"$nin": [ObjectId(x) for x in skip_ids if ObjectId.is_valid(x)]}} if skip_ids else {}),
-            }},
-            {"$sample": {"size": alloc}},
-            {"$project": {"_id": 1}},
-        ]
-        docs = await questions_col().aggregate(pipeline).to_list(None)
-        all_ids.extend(str(d["_id"]) for d in docs)
+        all_ids.extend(await _sample_for_course(cid, unlocked, alloc, skip_ids))
 
     random.shuffle(all_ids)
     return all_ids[:target]
@@ -122,18 +205,50 @@ async def _build_question_ids(user: dict, exclude: list[str], target: int) -> li
 async def get_or_create_daily_feed(user: dict) -> dict:
     today_str = date.today().isoformat()
     user_id   = user["id"]
+    level     = user["level"]
+    semester  = user["semester"]
     col       = feeds_col()
 
-    existing = await col.find_one({"user_id": user_id, "feed_date": today_str})
+    existing = await col.find_one({
+        "user_id": user_id,
+        "feed_date": today_str,
+        "level": level,
+        "semester": semester,
+    })
+
+    # Backward compatibility with old unique index (user_id + feed_date):
+    # older feed docs may not have level/semester, and only one feed can exist per day.
+    if not existing:
+        existing = await col.find_one({"user_id": user_id, "feed_date": today_str})
 
     if existing and not existing.get("is_fully_completed"):
+        if existing.get("level") != level or existing.get("semester") != semester:
+            await col.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {
+                    "level": level,
+                    "semester": semester,
+                    "question_ids": [],
+                    "completed_ids": [],
+                    "is_fully_completed": False,
+                }},
+            )
+            existing["level"] = level
+            existing["semester"] = semester
+            existing["question_ids"] = []
+            existing["completed_ids"] = []
+            existing["is_fully_completed"] = False
         return await _feed_response(existing, user_id)
 
     # Carry-over: if yesterday's feed was incomplete, keep unanswered questions
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
-    yesterday = await col.find_one(
-        {"user_id": user_id, "feed_date": yesterday_str, "is_fully_completed": False}
-    )
+    yesterday = await col.find_one({
+        "user_id": user_id,
+        "feed_date": yesterday_str,
+        "is_fully_completed": False,
+        "level": level,
+        "semester": semester,
+    })
 
     carry: list[str] = []
     if yesterday and not existing:
@@ -146,8 +261,16 @@ async def get_or_create_daily_feed(user: dict) -> dict:
     if existing:
         await col.update_one(
             {"_id": existing["_id"]},
-            {"$set": {"question_ids": question_ids, "completed_ids": [], "is_fully_completed": False}},
+            {"$set": {
+                "level": level,
+                "semester": semester,
+                "question_ids": question_ids,
+                "completed_ids": [],
+                "is_fully_completed": False,
+            }},
         )
+        existing["level"] = level
+        existing["semester"] = semester
         existing["question_ids"]   = question_ids
         existing["completed_ids"]  = []
         existing["is_fully_completed"] = False
@@ -156,6 +279,8 @@ async def get_or_create_daily_feed(user: dict) -> dict:
         doc = {
             "user_id": user_id,
             "feed_date": today_str,
+            "level": level,
+            "semester": semester,
             "question_ids": question_ids,
             "completed_ids": [],
             "is_fully_completed": False,
@@ -190,9 +315,12 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
             "options": q.get("options"),
             "difficulty": q.get("difficulty", "medium"),
             "topic": q.get("topic"),
+            "question_style": q.get("question_style", "application"),
+            "depth_level": q.get("depth_level", "apply"),
             "is_completed": is_done,
             "correct_answer": q.get("correct_answer") if is_done else None,
             "explanation": q.get("explanation") if is_done else None,
+            "solution_steps": q.get("solution_steps") if is_done else [],
         })
 
     total = len(questions)

@@ -171,6 +171,7 @@ async def _process_pdf_bg(
     course_title: str, week_number: int, course_id: str,
 ):
     from app.services.ai_service import process_pdf_file
+    from app.services.intelligence_service import upsert_course_intelligence
     try:
         data = await process_pdf_file(file_path, course_code, course_title, week_number)
         await pdfs_col().update_one(
@@ -195,10 +196,22 @@ async def _process_pdf_bg(
                 "explanation": q.get("explanation", ""),
                 "difficulty": q.get("difficulty", "medium"),
                 "topic": q.get("topic", ""),
+                "question_style": q.get("question_style", "application"),
+                "depth_level": q.get("depth_level", "apply"),
+                "solution_steps": q.get("solution_steps", []),
                 "is_active": True,
             })
         if q_docs:
             await questions_col().insert_many(q_docs)
+
+        await upsert_course_intelligence(
+            course_id=course_id,
+            course_title=course_title,
+            topics=data.get("topics", []),
+            key_formulas=data.get("key_formulas", []),
+            key_points=data.get("key_points", []),
+            summary=data.get("summary", ""),
+        )
     except Exception as e:
         await pdfs_col().update_one(
             {"_id": ObjectId(pdf_id)},

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutGrid, BookOpen, Calendar, User, Settings,
+  LayoutGrid, BookOpen, Calendar, User, Settings, Brain,
   LogOut, X, GraduationCap, Shield
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { path: '/', label: 'Home Feed', icon: LayoutGrid, exact: true },
   { path: '/courses', label: 'Courses', icon: BookOpen },
   { path: '/study', label: 'Study Cycle', icon: Calendar },
+  { path: '/intelligence', label: 'Intelligence', icon: Brain },
   { path: '/profile', label: 'Profile', icon: User },
 ];
 

@@ -4,6 +4,7 @@ import type {
   DailyFeed, AnswerResult, FeedProgress,
   Course, CoursePDF, ExamSlot, StudyCycleDay,
   AcademicCalendar, User, DailyHistoryItem, FeedInsights,
+  CourseProfile, CourseTopic, CourseFormula, CourseDeepDiveNote,
 } from '../types';
 
 // Feed
@@ -60,6 +61,8 @@ export const adminApi = {
 
   getStudyCycle: (level = '100L', semester = 1) =>
     apiClient.get<StudyCycleDay[]>('/admin/study-cycle', { params: { level, semester } }),
+  getStudyCycleHistory: () =>
+    apiClient.get<{ level: string; semester: number; days: StudyCycleDay[] }[]>('/admin/study-cycle/history'),
   updateStudyCycle: (level: string, semester: number, days: unknown[]) =>
     apiClient.put('/admin/study-cycle', { level, semester, days }),
 
@@ -92,4 +95,15 @@ export const usersApi = {
 export const questionsApi = {
   flag: (questionId: string, reason?: string) =>
     apiClient.post(`/questions/${questionId}/flag`, { reason }),
+};
+
+export const intelligenceApi = {
+  getProfile: (courseId: string) =>
+    apiClient.get<CourseProfile>(`/intelligence/courses/${courseId}/profile`),
+  getTopics: (courseId: string) =>
+    apiClient.get<CourseTopic[]>(`/intelligence/courses/${courseId}/topics`),
+  getFormulas: (courseId: string) =>
+    apiClient.get<CourseFormula[]>(`/intelligence/courses/${courseId}/formulas`),
+  getDeepDive: (courseId: string) =>
+    apiClient.get<CourseDeepDiveNote[]>(`/intelligence/courses/${courseId}/deep-dive`),
 };

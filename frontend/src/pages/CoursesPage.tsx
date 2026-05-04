@@ -1,10 +1,10 @@
 // src/pages/CoursesPage.tsx
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Upload, ChevronDown, ChevronUp, Check,
-  Loader2, FileText, Plus, X, AlertCircle, Trash2, Pencil,
+  Loader2, FileText, Plus, X, AlertCircle, Trash2, Pencil, Search,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { coursesApi } from '../api/index';
@@ -26,6 +26,8 @@ interface QueueItem {
   errorMsg?: string;
 }
 
+type CourseTab = 'current' | 'past';
+
 // ── PDFRow ──────────────────────────────────────────────────────────────────
 function PDFRow({
   pdf,
@@ -40,6 +42,7 @@ function PDFRow({
   const [showSummary, setShowSummary] = useState(false);
   const [editingWeek, setEditingWeek] = useState(false);
   const [weekDraft, setWeekDraft]     = useState(pdf.week_number);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: () => coursesApi.deletePdf(courseId, pdf.id),
@@ -151,10 +154,7 @@ function PDFRow({
         {/* Delete (admin only) */}
         {isAdmin && (
           <button
-            onClick={() => {
-              if (!confirm(`Delete "${pdf.original_name}"? This cannot be undone.`)) return;
-              deleteMutation.mutate();
-            }}
+            onClick={() => setShowDeleteModal(true)}
             disabled={deleteMutation.isPending}
             className="text-cream-200/20 hover:text-accent-coral transition-colors disabled:opacity-40 shrink-0"
             title="Delete PDF"
@@ -190,6 +190,48 @@ function PDFRow({
               </div>
             )}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showDeleteModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md card p-5">
+                <h4 className="font-display text-lg text-cream-200 mb-2">Delete PDF?</h4>
+                <p className="text-cream-200/55 text-sm">
+                  You are about to remove <span className="text-cream-200/85">{pdf.original_name}</span>.
+                  This action cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button className="btn-ghost text-sm" onClick={() => setShowDeleteModal(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary text-sm"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      deleteMutation.mutate();
+                    }}
+                    disabled={deleteMutation.isPending}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>
@@ -484,6 +526,8 @@ export default function CoursesPage() {
   const qc = useQueryClient();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
   const [showAddCourse, setShowAddCourse] = useState(false);
+  const [activeTab, setActiveTab] = useState<CourseTab>('current');
+  const [searchText, setSearchText] = useState('');
   const [newCourse, setNewCourse] = useState({
     code: '', title: '',
     level: user?.level || '100L',
@@ -492,9 +536,38 @@ export default function CoursesPage() {
   });
 
   const { data: courses, isLoading } = useQuery({
-    queryKey: ['courses', user?.level, user?.semester],
-    queryFn: () => coursesApi.list(user?.level, user?.semester).then(r => r.data),
+    queryKey: ['courses', 'all'],
+    queryFn: () => coursesApi.list().then(r => r.data),
   });
+
+  const termRank = (level: string, semester: number) => {
+    const numericLevel = Number(level.replace('L', '')) || 0;
+    return numericLevel * 10 + semester;
+  };
+
+  const currentRank = user ? termRank(user.level, user.semester) : 0;
+
+  const currentCourses = useMemo(
+    () => (courses ?? []).filter(c => c.level === user?.level && c.semester === user?.semester),
+    [courses, user?.level, user?.semester],
+  );
+
+  const pastCourses = useMemo(
+    () => (courses ?? []).filter(c => termRank(c.level, c.semester) < currentRank),
+    [courses, currentRank],
+  );
+
+  const sourceCourses = activeTab === 'current' ? currentCourses : pastCourses;
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredCourses = useMemo(
+    () => sourceCourses.filter(course =>
+      !normalizedSearch
+      || course.code.toLowerCase().includes(normalizedSearch)
+      || course.title.toLowerCase().includes(normalizedSearch)
+      || `${course.level} semester ${course.semester}`.toLowerCase().includes(normalizedSearch)
+    ),
+    [sourceCourses, normalizedSearch],
+  );
 
   const addCourseMutation = useMutation({
     mutationFn: (data: typeof newCourse) => coursesApi.create(data),
@@ -520,7 +593,7 @@ export default function CoursesPage() {
           </div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-cream-200">Courses</h1>
           <p className="text-cream-200/45 text-sm mt-1">
-            {courses?.length ?? 0} courses · BSc. Software Engineering
+            {filteredCourses.length} {activeTab === 'current' ? 'current' : 'past'} course{filteredCourses.length === 1 ? '' : 's'} · BSc. Software Engineering
           </p>
         </div>
         {isAdmin && (
@@ -529,6 +602,45 @@ export default function CoursesPage() {
           </button>
         )}
       </motion.div>
+
+      <div className="card p-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-xl border border-cream-200/10 p-1">
+            <button
+              onClick={() => setActiveTab('current')}
+              className={clsx(
+                'px-3 py-1.5 text-xs rounded-lg transition-colors',
+                activeTab === 'current'
+                  ? 'bg-cream-200/12 text-cream-200'
+                  : 'text-cream-200/40 hover:text-cream-200/75'
+              )}
+            >
+              Current ({currentCourses.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('past')}
+              className={clsx(
+                'px-3 py-1.5 text-xs rounded-lg transition-colors',
+                activeTab === 'past'
+                  ? 'bg-cream-200/12 text-cream-200'
+                  : 'text-cream-200/40 hover:text-cream-200/75'
+              )}
+            >
+              Past ({pastCourses.length})
+            </button>
+          </div>
+
+          <div className="relative flex-1 min-w-[220px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-cream-200/25" />
+            <input
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder={activeTab === 'current' ? 'Search current courses...' : 'Search past courses...'}
+              className="input-field pl-9"
+            />
+          </div>
+        </div>
+      </div>
 
       <AnimatePresence>
         {showAddCourse && isAdmin && (
@@ -587,9 +699,9 @@ export default function CoursesPage() {
         <div className="space-y-3">
           {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <div key={i} className="h-20 shimmer-bg rounded-2xl" />)}
         </div>
-      ) : courses && courses.length > 0 ? (
+      ) : filteredCourses.length > 0 ? (
         <div className="space-y-3">
-          {courses.map((course, i) => (
+          {filteredCourses.map((course, i) => (
             <CourseCard
               key={course.id}
               course={course}
@@ -601,8 +713,20 @@ export default function CoursesPage() {
       ) : (
         <div className="card p-12 text-center">
           <BookOpen size={40} className="text-cream-200/15 mx-auto mb-3" />
-          <h3 className="font-display text-xl text-cream-200 mb-2">No courses yet</h3>
-          <p className="text-cream-200/35 text-sm">Add courses to get started.</p>
+          <h3 className="font-display text-xl text-cream-200 mb-2">
+            {searchText.trim()
+              ? 'No matching courses'
+              : activeTab === 'past'
+              ? 'No past courses yet'
+              : 'No current courses yet'}
+          </h3>
+          <p className="text-cream-200/35 text-sm">
+            {searchText.trim()
+              ? 'Try a different keyword.'
+              : activeTab === 'past'
+              ? 'Completed semester courses will appear here.'
+              : 'Add courses to get started.'}
+          </p>
         </div>
       )}
     </div>

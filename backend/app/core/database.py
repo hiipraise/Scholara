@@ -28,6 +28,10 @@ def question_flags_col(): return col("question_flags")
 def exams_col():       return col("exam_slots")
 def cycles_col():      return col("study_cycles")
 def calendars_col():   return col("academic_calendars")
+def profiles_col():    return col("course_profiles")
+def topics_col():      return col("course_topics")
+def formulas_col():    return col("course_formulas")
+def notes_col():       return col("content_notes")
 
 async def create_indexes():
     db = get_db()
@@ -41,3 +45,7 @@ async def create_indexes():
     await db.exam_slots.create_index([("exam_date", 1), ("level", 1), ("semester", 1)])
     await db.study_cycles.create_index([("level", 1), ("semester", 1), ("day_number", 1)], unique=True)
     await db.academic_calendars.create_index([("level", 1), ("semester", 1)], unique=True)
+    await db.course_profiles.create_index("course_id", unique=True)
+    await db.course_topics.create_index([("course_id", 1), ("topic", 1), ("subtopic", 1)], unique=True)
+    await db.course_formulas.create_index([("course_id", 1), ("formula_name", 1)], unique=True)
+    await db.content_notes.create_index([("course_id", 1), ("topic", 1)])

@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  RefreshCw, Filter, ChevronDown, CheckSquare,
+  RefreshCw, Filter, ChevronDown, ChevronUp, CheckSquare,
   AlertCircle, BookOpen, Calendar, TrendingUp, Clock, Flame, Target, Activity
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -19,6 +19,8 @@ const COURSE_COLORS = [
   '#d4604a', '#4aa8af', '#af8a4a', '#6e8a5a',
 ];
 
+const PRACTICE_SESSION_KEY_PREFIX = 'scholara.practice.session';
+
 export default function HomePage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
@@ -26,8 +28,46 @@ export default function HomePage() {
   const [filterDone, setFilterDone] = useState<'all' | 'pending' | 'done'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [practiceCourseIds, setPracticeCourseIds] = useState<string[]>([]);
+  const [practiceCourseTab, setPracticeCourseTab] = useState<'current' | 'past'>('current');
   const [practiceCount, setPracticeCount] = useState<30 | 60>(30);
   const [customFeed, setCustomFeed] = useState<any | null>(null);
+  const [practiceResults, setPracticeResults] = useState<Record<string, boolean>>({});
+  const [showPracticeResultModal, setShowPracticeResultModal] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 320);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const sessionKey = user?.id ? `${PRACTICE_SESSION_KEY_PREFIX}.${user.id}` : null;
+
+  useEffect(() => {
+    if (!sessionKey) return;
+    const raw = localStorage.getItem(sessionKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as { customFeed?: any; practiceResults?: Record<string, boolean> };
+      if (parsed?.customFeed?.questions?.length) {
+        setCustomFeed(parsed.customFeed);
+        setPracticeResults(parsed.practiceResults || {});
+        toast.success('Resumed focused practice session');
+      }
+    } catch {
+      localStorage.removeItem(sessionKey);
+    }
+  }, [sessionKey]);
+
+  useEffect(() => {
+    if (!sessionKey) return;
+    if (!customFeed) {
+      localStorage.removeItem(sessionKey);
+      return;
+    }
+    localStorage.setItem(sessionKey, JSON.stringify({ customFeed, practiceResults }));
+  }, [sessionKey, customFeed, practiceResults]);
 
   const { data: feed, isLoading: feedLoading, error: feedError } = useQuery({
     queryKey: ['feed', 'today'],
@@ -74,9 +114,21 @@ export default function HomePage() {
       }),
     onSuccess: ({ data }) => {
       setCustomFeed(data);
+      setPracticeResults({});
+      setShowPracticeResultModal(false);
       toast.success(`Loaded ${data.total} focused questions`);
     },
   });
+
+  const customTotal = customFeed?.questions?.length ?? 0;
+  const customDone = customFeed?.questions?.filter((q: Question) => q.is_completed).length ?? 0;
+  const customCorrect = Object.values(practiceResults).filter(Boolean).length;
+
+  useEffect(() => {
+    if (!customFeed?.questions?.length) return;
+    const allDone = customFeed.questions.every((q: Question) => q.is_completed);
+    if (allDone) setShowPracticeResultModal(true);
+  }, [customFeed]);
 
   // Build course map with colors
   const courseMap = useMemo(() => {
@@ -86,6 +138,12 @@ export default function HomePage() {
     });
     return map;
   }, [courses]);
+
+  const rank = (level: string, semester: number) => (Number(level.replace('L', '')) || 0) * 10 + semester;
+  const currentRank = user ? rank(user.level, user.semester) : 0;
+  const currentCourses = (courses || []).filter(c => c.level === user?.level && c.semester === user?.semester);
+  const pastCourses = (courses || []).filter(c => rank(c.level, c.semester) < currentRank);
+  const practicePool = practiceCourseTab === 'current' ? currentCourses : pastCourses;
 
   // Filter questions
   const displayedQuestions = useMemo(() => {
@@ -295,14 +353,37 @@ export default function HomePage() {
             >
               60
             </button>
-            <button onClick={() => setCustomFeed(null)} className="btn-ghost text-xs">Back to Home Feed</button>
+            <button
+              onClick={() => {
+                setCustomFeed(null);
+                setPracticeResults({});
+                setShowPracticeResultModal(false);
+              }}
+              className="btn-ghost text-xs"
+            >
+              Back to Home Feed
+            </button>
             <button onClick={() => practiceMutation.mutate()} className="btn-primary text-xs" disabled={practiceMutation.isPending}>
               {practiceMutation.isPending ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {courses?.map((c, i) => (
+          <div className="inline-flex rounded-xl border border-cream-200/10 p-1 mr-1">
+            <button
+              onClick={() => setPracticeCourseTab('current')}
+              className={clsx('px-2.5 py-1 text-[10px] rounded-md', practiceCourseTab === 'current' ? 'bg-cream-200/12 text-cream-200' : 'text-cream-200/40')}
+            >
+              Current
+            </button>
+            <button
+              onClick={() => setPracticeCourseTab('past')}
+              className={clsx('px-2.5 py-1 text-[10px] rounded-md', practiceCourseTab === 'past' ? 'bg-cream-200/12 text-cream-200' : 'text-cream-200/40')}
+            >
+              Past
+            </button>
+          </div>
+          {practicePool?.map((c, i) => (
             <button
               key={c.id}
               onClick={() => setPracticeCourseIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
@@ -322,6 +403,11 @@ export default function HomePage() {
             14-day progress history: {history.history.filter(h => h.attempted > 0).length} active day(s).
           </p>
         ) : null}
+        {customFeed && (
+          <p className="text-cream-200/35 text-xs mt-2">
+            Focused progress: {customDone}/{customTotal} completed · Correct: {customCorrect}
+          </p>
+        )}
       </motion.div>
 
       {/* Week Progress Gate */}
@@ -493,7 +579,19 @@ export default function HomePage() {
               courseCode={courseMap[q.course_id]?.code || 'COURSE'}
               courseColor={courseMap[q.course_id]?.color || '#4a7fb5'}
               index={i}
-              onAnswered={() => {
+              onAnswered={(result) => {
+                if (customFeed) {
+                  setPracticeResults(prev => ({ ...prev, [q.id]: result.is_correct }));
+                  setCustomFeed((prev: any) => {
+                    if (!prev?.questions) return prev;
+                    return {
+                      ...prev,
+                      questions: prev.questions.map((pq: Question) =>
+                        pq.id === q.id ? { ...pq, is_completed: true } : pq
+                      ),
+                    };
+                  });
+                }
                 // Refresh both the feed (progress bar / completed_count) and stats
                 qc.invalidateQueries({ queryKey: ['feed', 'today'] });
                 qc.invalidateQueries({ queryKey: ['feed', 'stats'] });
@@ -502,6 +600,84 @@ export default function HomePage() {
           ))}
         </div>
       )}
+
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="fixed right-5 bottom-20 sm:bottom-8 z-40 h-11 w-11 rounded-full border border-cream-200/20 bg-[#1a2136]/90 text-cream-200 shadow-glow-cream backdrop-blur-sm hover:bg-[#212842] transition-colors"
+            aria-label="Scroll to top"
+            title="Scroll to top"
+          >
+            <ChevronUp size={18} className="mx-auto" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPracticeResultModal && customFeed && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md card p-6">
+                <h3 className="font-display text-xl text-cream-200 mb-2">Focused Practice Complete</h3>
+                <p className="text-cream-200/55 text-sm mb-4">
+                  Session finished successfully. Here is your result summary.
+                </p>
+                <div className="grid grid-cols-3 gap-2 mb-5">
+                  <div className="bg-cream-200/5 rounded-lg p-3 text-center">
+                    <div className="text-cream-200/35 text-[10px] uppercase">Total</div>
+                    <div className="text-cream-200 font-mono text-lg">{customTotal}</div>
+                  </div>
+                  <div className="bg-cream-200/5 rounded-lg p-3 text-center">
+                    <div className="text-cream-200/35 text-[10px] uppercase">Correct</div>
+                    <div className="text-accent-sage font-mono text-lg">{customCorrect}</div>
+                  </div>
+                  <div className="bg-cream-200/5 rounded-lg p-3 text-center">
+                    <div className="text-cream-200/35 text-[10px] uppercase">Accuracy</div>
+                    <div className="text-cream-200 font-mono text-lg">
+                      {customTotal ? Math.round((customCorrect / customTotal) * 100) : 0}%
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    className="btn-ghost text-sm"
+                    onClick={() => setShowPracticeResultModal(false)}
+                  >
+                    Review Questions
+                  </button>
+                  <button
+                    className="btn-primary text-sm"
+                    onClick={() => {
+                      setCustomFeed(null);
+                      setPracticeResults({});
+                      setShowPracticeResultModal(false);
+                    }}
+                  >
+                    Back to Home Feed
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import CoursesPage from './pages/CoursesPage';
 import StudyPage from './pages/StudyPage';
+import IntelligencePage from './pages/IntelligencePage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
 import Layout from './components/layout/Layout';
@@ -72,6 +73,7 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="courses" element={<CoursesPage />} />
             <Route path="study" element={<StudyPage />} />
+            <Route path="intelligence" element={<IntelligencePage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route
               path="admin"

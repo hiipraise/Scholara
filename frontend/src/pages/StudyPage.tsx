@@ -45,6 +45,8 @@ const COURSE_COLORS = [
 export default function StudyPage() {
   const { user } = useAuthStore();
   const [showFullCycle, setShowFullCycle] = useState(false);
+  const [cycleTab, setCycleTab] = useState<'current' | 'past'>('current');
+  const [selectedPastTerm, setSelectedPastTerm] = useState<string>('');
 
   const { data: cycle, isLoading: cycleLoading } = useQuery({
     queryKey: ['study-cycle', user?.level, user?.semester],
@@ -59,6 +61,10 @@ export default function StudyPage() {
   const { data: calendars } = useQuery({
     queryKey: ['calendars'],
     queryFn: () => adminApi.getCalendars().then(r => r.data),
+  });
+  const { data: cycleHistory } = useQuery({
+    queryKey: ['study-cycle-history'],
+    queryFn: () => adminApi.getStudyCycleHistory().then(r => r.data),
   });
 
   const activeCalendar = calendars?.find(c => c.level === user?.level && c.semester === user?.semester);
@@ -75,12 +81,18 @@ export default function StudyPage() {
   const sortedExamDates = Object.keys(examsByDate).sort();
   const upcomingExams = sortedExamDates.filter(d => !isPast(parseISO(d)) || isToday(parseISO(d)));
 
+  const currentTermKey = `${user?.level}|${user?.semester}`;
+  const pastTerms = (cycleHistory || []).filter(t => `${t.level}|${t.semester}` !== currentTermKey);
+  const activePastTermKey = selectedPastTerm || (pastTerms[0] ? `${pastTerms[0].level}|${pastTerms[0].semester}` : '');
+  const selectedPast = pastTerms.find(t => `${t.level}|${t.semester}` === activePastTermKey);
+  const displayedCycle = cycleTab === 'current' ? cycle : (selectedPast?.days || []);
+
   // Days to display: current, next 2
-  const displayDays = cycle
+  const displayDays = displayedCycle
     ? [
-        cycle.find(d => d.day_number === currentStudyDay),
-        cycle.find(d => d.day_number === ((currentStudyDay % 5) + 1)),
-        cycle.find(d => d.day_number === (((currentStudyDay + 1) % 5) + 1)),
+        displayedCycle.find(d => d.day_number === currentStudyDay),
+        displayedCycle.find(d => d.day_number === ((currentStudyDay % 5) + 1)),
+        displayedCycle.find(d => d.day_number === (((currentStudyDay + 1) % 5) + 1)),
       ].filter(Boolean)
     : [];
 
@@ -105,9 +117,42 @@ export default function StudyPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
+        <div className="flex items-center gap-2 mb-4">
+          <div className="inline-flex rounded-xl border border-cream-200/10 p-1">
+            <button
+              onClick={() => setCycleTab('current')}
+              className={clsx('px-3 py-1.5 text-xs rounded-lg transition-colors',
+                cycleTab === 'current' ? 'bg-cream-200/12 text-cream-200' : 'text-cream-200/40 hover:text-cream-200/75')}
+            >
+              Current
+            </button>
+            <button
+              onClick={() => setCycleTab('past')}
+              className={clsx('px-3 py-1.5 text-xs rounded-lg transition-colors',
+                cycleTab === 'past' ? 'bg-cream-200/12 text-cream-200' : 'text-cream-200/40 hover:text-cream-200/75')}
+            >
+              Past
+            </button>
+          </div>
+          {cycleTab === 'past' && (
+            <select
+              className="input-field max-w-[220px] h-9 py-1 text-xs"
+              value={activePastTermKey}
+              onChange={(e) => setSelectedPastTerm(e.target.value)}
+            >
+              {pastTerms.map(t => (
+                <option key={`${t.level}|${t.semester}`} value={`${t.level}|${t.semester}`}>
+                  {t.level} Semester {t.semester}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-cream-200/70 text-sm font-semibold uppercase tracking-wider">
-            Current Cycle
+            {cycleTab === 'current'
+              ? 'Current Cycle'
+              : `Past Cycle${selectedPast ? ` · ${selectedPast.level} S${selectedPast.semester}` : ''}`}
           </h2>
           <button
             onClick={() => setShowFullCycle(!showFullCycle)}
@@ -187,7 +232,7 @@ export default function StudyPage() {
                       <h3 className="text-cream-200/70 text-sm font-semibold">Full 5-Day Cycle</h3>
                     </div>
                     <div className="divide-y divide-cream-200/6">
-                      {cycle?.map(day => (
+                      {displayedCycle?.map(day => (
                         <div
                           key={day.day_number}
                           className={clsx(
