@@ -1,28 +1,29 @@
-import { useState } from 'react';
+import { useState, type ElementType } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Calendar, LayoutGrid, Settings, Plus, Trash2,
-  Edit2, Save, X, Shield, GraduationCap
+  Edit2, Save, X, Shield, GraduationCap, Flag
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
 import { adminApi, coursesApi } from '../api/index';
 import { useAuthStore } from '../store/authStore';
-import type { ExamSlot, User as UserType } from '../types';
+import type { ExamSlot, QuestionFlag, User as UserType } from '../types';
 import toast from 'react-hot-toast';
 
-type Tab = 'exam' | 'cycle' | 'calendar' | 'users';
+type Tab = 'exam' | 'cycle' | 'calendar' | 'flags' | 'users';
 
 export default function AdminPage() {
   const { user } = useAuthStore();
   const [tab, setTab] = useState<Tab>('exam');
   const isSuperAdmin = user?.role === 'superadmin';
 
-  const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  const TABS: { id: Tab; label: string; icon: ElementType }[] = [
     { id: 'exam', label: 'Exam Timetable', icon: Calendar },
     { id: 'cycle', label: 'Study Cycle', icon: LayoutGrid },
     { id: 'calendar', label: 'Academic Calendar', icon: Settings },
+    { id: 'flags', label: 'Question Flags', icon: Flag },
     ...(isSuperAdmin ? [{ id: 'users' as Tab, label: 'Users', icon: Users }] : []),
   ];
 
@@ -68,6 +69,7 @@ export default function AdminPage() {
           {tab === 'exam' && <ExamTimetableAdmin />}
           {tab === 'cycle' && <StudyCycleAdmin />}
           {tab === 'calendar' && <CalendarAdmin />}
+          {tab === 'flags' && <QuestionFlagsAdmin />}
           {tab === 'users' && isSuperAdmin && <UsersAdmin />}
         </motion.div>
       </AnimatePresence>
@@ -622,6 +624,125 @@ function CalendarAdmin() {
         {(!calendars || calendars.length === 0) && (
           <div className="card p-8 text-center">
             <p className="text-cream-200/30 text-sm">No calendar entries yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/* ─── Question Flags ───────────────────────────────────────────────────────── */
+function QuestionFlagsAdmin() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<'open' | 'resolved' | 'all'>('open');
+
+  const { data: flags, isLoading } = useQuery({
+    queryKey: ['question-flags', status],
+    queryFn: () => adminApi.getQuestionFlags(status).then(r => r.data),
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ questionId, deactivate }: { questionId: string; deactivate: boolean }) =>
+      adminApi.resolveQuestionFlags(questionId, deactivate),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['question-flags'] });
+      toast.success(variables.deactivate ? 'Question disabled and flags resolved' : 'Flags resolved');
+    },
+    onError: () => toast.error('Failed to update flagged question'),
+  });
+
+  function resolve(flag: QuestionFlag, deactivate: boolean) {
+    resolveMutation.mutate({ questionId: flag.question_id, deactivate });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-cream-200/70 text-sm font-semibold">
+            Flagged Questions ({flags?.length ?? 0})
+          </h3>
+          <p className="text-cream-200/35 text-xs mt-1">
+            Review reported questions, resolve false alarms, or disable bad questions from future feeds.
+          </p>
+        </div>
+        <select
+          value={status}
+          onChange={e => setStatus(e.target.value as 'open' | 'resolved' | 'all')}
+          className="input-field text-xs sm:w-40"
+        >
+          <option value="open">Open flags</option>
+          <option value="resolved">Resolved flags</option>
+          <option value="all">All flags</option>
+        </select>
+      </div>
+
+      <div className="space-y-3">
+        {flags?.map(flag => (
+          <div key={flag.question_id} className="card p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="badge border border-accent-coral/25 bg-accent-coral/12 text-accent-coral text-[10px]">
+                    {flag.flag_count} {flag.flag_count === 1 ? 'flag' : 'flags'}
+                  </span>
+                  <span className="badge border border-cream-200/12 text-cream-200/55 text-[10px]">
+                    {flag.course_code} {flag.week_number ? `· Week ${flag.week_number}` : ''}
+                  </span>
+                  <span className={clsx(
+                    'badge border text-[10px]',
+                    flag.is_active
+                      ? 'border-accent-sage/25 bg-accent-sage/12 text-accent-sage'
+                      : 'border-cream-200/10 bg-cream-200/5 text-cream-200/35'
+                  )}>
+                    {flag.is_active ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+                <p className="text-cream-200/85 text-sm leading-relaxed">{flag.question_text}</p>
+                {flag.reasons.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {flag.reasons.slice(0, 5).map(reason => (
+                      <span key={reason} className="rounded-lg bg-cream-200/6 px-2 py-1 text-[11px] text-cream-200/55">
+                        {reason}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3 text-cream-200/30 text-[11px]">
+                  Latest: {flag.latest_flagged_at ? format(parseISO(flag.latest_flagged_at), 'MMM d, yyyy h:mm a') : '—'}
+                  {flag.reporters.length > 0 ? ` · ${flag.reporters.length} reporter${flag.reporters.length === 1 ? '' : 's'}` : ''}
+                </div>
+              </div>
+              {flag.status === 'open' && (
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => resolve(flag, false)}
+                    disabled={resolveMutation.isPending}
+                    className="btn-ghost text-xs px-3 py-2"
+                  >
+                    Resolve
+                  </button>
+                  <button
+                    onClick={() => resolve(flag, true)}
+                    disabled={resolveMutation.isPending || !flag.is_active}
+                    className="btn-primary text-xs px-3 py-2"
+                  >
+                    Disable question
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {!isLoading && (!flags || flags.length === 0) && (
+          <div className="card p-8 text-center">
+            <p className="text-cream-200/30 text-sm">No {status === 'all' ? '' : status} question flags found.</p>
+          </div>
+        )}
+        {isLoading && (
+          <div className="card p-8 text-center">
+            <p className="text-cream-200/30 text-sm">Loading flagged questions...</p>
           </div>
         )}
       </div>

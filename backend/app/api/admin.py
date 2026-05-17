@@ -7,7 +7,7 @@ from datetime import datetime, date
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
 from app.core.database import (
     exams_col, cycles_col, calendars_col,
-    users_col, courses_col,
+    users_col, courses_col, questions_col, question_flags_col,
 )
 
 router = APIRouter()
@@ -237,6 +237,88 @@ async def delete_calendar(calendar_id: str, admin: dict = Depends(get_admin_user
         raise HTTPException(status_code=404, detail="Calendar entry not found")
     return {"message": "Calendar deleted"}
 
+
+
+# ── Question Flags ───────────────────────────────────────────────────────────
+
+class FlagResolveIn(BaseModel):
+    deactivate_question: bool = False
+
+
+def _iso(value):
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+@router.get("/question-flags")
+async def list_question_flags(status: str = "open", admin: dict = Depends(get_admin_user)):
+    match = {} if status == "all" else {"status": status}
+    grouped = await question_flags_col().aggregate([
+        {"$match": match},
+        {
+            "$group": {
+                "_id": "$question_id",
+                "flag_count": {"$sum": 1},
+                "latest_flagged_at": {"$max": "$flagged_at"},
+                "course_id": {"$first": "$course_id"},
+                "reasons": {"$addToSet": "$reason"},
+                "reporters": {"$addToSet": "$user_email"},
+                "statuses": {"$addToSet": "$status"},
+            }
+        },
+        {"$sort": {"latest_flagged_at": -1}},
+    ]).to_list(None)
+
+    out = []
+    for item in grouped:
+        question_id = item.get("_id")
+        if not question_id or not ObjectId.is_valid(question_id):
+            continue
+        question = await questions_col().find_one({"_id": ObjectId(question_id)})
+        course = None
+        course_id = item.get("course_id")
+        if course_id and ObjectId.is_valid(course_id):
+            course = await courses_col().find_one({"_id": ObjectId(course_id)})
+
+        out.append({
+            "question_id": question_id,
+            "flag_count": item.get("flag_count", 0),
+            "latest_flagged_at": _iso(item.get("latest_flagged_at")),
+            "reasons": [r for r in item.get("reasons", []) if r],
+            "reporters": [r for r in item.get("reporters", []) if r],
+            "status": "open" if "open" in item.get("statuses", []) else "resolved",
+            "course_id": course_id,
+            "course_code": course.get("code") if course else "—",
+            "course_title": course.get("title") if course else "—",
+            "question_text": question.get("question_text") if question else "Question deleted",
+            "week_number": question.get("week_number") if question else None,
+            "is_active": question.get("is_active", False) if question else False,
+        })
+    return out
+
+
+@router.patch("/question-flags/{question_id}/resolve")
+async def resolve_question_flags(
+    question_id: str,
+    body: FlagResolveIn,
+    admin: dict = Depends(get_admin_user),
+):
+    if not ObjectId.is_valid(question_id):
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    now = datetime.utcnow()
+    result = await question_flags_col().update_many(
+        {"question_id": question_id, "status": "open"},
+        {"$set": {"status": "resolved", "resolved_at": now, "resolved_by": admin["id"], "updated_at": now}},
+    )
+    if body.deactivate_question:
+        await questions_col().update_one({"_id": ObjectId(question_id)}, {"$set": {"is_active": False, "updated_at": now}})
+
+    return {
+        "ok": True,
+        "question_id": question_id,
+        "resolved_count": result.modified_count,
+        "deactivated": body.deactivate_question,
+    }
 
 # ── Users (SuperAdmin only) ────────────────────────────────────────────────
 

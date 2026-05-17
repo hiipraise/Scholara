@@ -3,7 +3,7 @@ import apiClient from './client';
 import type {
   DailyFeed, AnswerResult, FeedProgress,
   Course, CoursePDF, ExamSlot, StudyCycleDay,
-  AcademicCalendar, User, DailyHistoryItem, FeedInsights,
+  AcademicCalendar, User, DailyHistoryItem, FeedInsights, QuestionFlag,
   CourseProfile, CourseTopic, CourseFormula, CourseDeepDiveNote,
 } from '../types';
 
@@ -83,6 +83,11 @@ export const adminApi = {
     apiClient.put(`/admin/users/${userId}/level`, null, { params: { level, semester } }),
   deactivateUser: (userId: string) =>
     apiClient.delete(`/admin/users/${userId}`),
+
+  getQuestionFlags: (status: 'open' | 'resolved' | 'all' = 'open') =>
+    apiClient.get<QuestionFlag[]>('/admin/question-flags', { params: { status } }),
+  resolveQuestionFlags: (questionId: string, deactivate_question = false) =>
+    apiClient.patch(`/admin/question-flags/${questionId}/resolve`, { deactivate_question }),
 };
 
 // Users

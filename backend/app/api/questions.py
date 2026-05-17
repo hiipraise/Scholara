@@ -39,12 +39,16 @@ async def flag_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
+    now = datetime.utcnow()
     payload = {
         "user_id": current_user["id"],
+        "user_email": current_user.get("email"),
         "question_id": question_id,
         "course_id": question.get("course_id"),
         "reason": (body.reason or "").strip() or None,
-        "flagged_at": datetime.utcnow(),
+        "status": "open",
+        "flagged_at": now,
+        "updated_at": now,
     }
     await question_flags_col().update_one(
         {"user_id": current_user["id"], "question_id": question_id},

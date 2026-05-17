@@ -15,6 +15,13 @@ interface Props {
 }
 
 const OPTION_KEYS = ['A', 'B', 'C', 'D'] as const;
+const FLAG_REASONS = [
+  'Wrong answer',
+  'Confusing wording',
+  'Incorrect explanation',
+  'Typo or formatting issue',
+  'Out of scope',
+] as const;
 
 const DIFFICULTY_STYLES: Record<string, string> = {
   easy:   'bg-accent-sage/15 text-accent-sage border-accent-sage/20',
@@ -29,6 +36,9 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
   const [loading, setLoading] = useState(false);
   const [flagging, setFlagging] = useState(false);
   const [isFlagged, setIsFlagged] = useState(false);
+  const [showFlagForm, setShowFlagForm] = useState(false);
+  const [flagReason, setFlagReason] = useState<string>(FLAG_REASONS[0]);
+  const [flagNote, setFlagNote] = useState('');
 
   const isAnswered = question.is_completed || !!result;
   const correctAnswer = result?.correct_answer || question.correct_answer;
@@ -56,11 +66,14 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
 
   async function handleFlagQuestion() {
     if (flagging || isFlagged) return;
+    const note = flagNote.trim();
+    const reason = note ? `${flagReason}: ${note}` : flagReason;
     setFlagging(true);
     try {
-      await questionsApi.flag(question.id);
+      await questionsApi.flag(question.id, reason);
       setIsFlagged(true);
-      toast.success('Question flagged for review', { duration: 1800 });
+      setShowFlagForm(false);
+      toast.success('Question flagged for admin review', { duration: 1800 });
     } catch {
       toast.error('Could not flag question');
     } finally {
@@ -100,7 +113,7 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={handleFlagQuestion}
+            onClick={() => { if (!isFlagged) setShowFlagForm(v => !v); }}
             disabled={flagging || isFlagged}
             className={clsx(
               'w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
@@ -110,6 +123,7 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
             )}
             title={isFlagged ? 'Question flagged' : 'Flag this question'}
             aria-label={isFlagged ? 'Question flagged' : 'Flag this question'}
+            aria-expanded={showFlagForm}
           >
             <Flag size={13} />
           </button>
@@ -128,6 +142,53 @@ export default function QuestionCard({ question, courseCode, courseColor, index,
           )}
         </div>
       </div>
+
+
+
+      <AnimatePresence>
+        {showFlagForm && !isFlagged && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-accent-coral/20 bg-accent-coral/8 p-3">
+              <div className="text-cream-200/75 text-xs font-semibold mb-2">Tell admins what needs review</div>
+              <div className="grid gap-2 sm:grid-cols-[180px,1fr]">
+                <select
+                  value={flagReason}
+                  onChange={e => setFlagReason(e.target.value)}
+                  className="input-field text-xs py-2"
+                >
+                  {FLAG_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}
+                </select>
+                <input
+                  value={flagNote}
+                  onChange={e => setFlagNote(e.target.value.slice(0, 220))}
+                  placeholder="Optional note for the reviewer"
+                  className="input-field text-xs py-2"
+                />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={handleFlagQuestion}
+                  disabled={flagging}
+                  className="btn-primary text-xs px-3 py-1.5"
+                >
+                  {flagging ? 'Flagging...' : 'Submit flag'}
+                </button>
+                <button
+                  onClick={() => setShowFlagForm(false)}
+                  className="btn-ghost text-xs px-3 py-1.5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Question */}
       <p className="text-cream-200/90 text-sm sm:text-base font-body leading-relaxed mb-4">
