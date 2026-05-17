@@ -62,7 +62,7 @@ async def get_progress(current_user: dict = Depends(get_current_user)):
     if not cal:
         cal = await calendars_col().find_one(
             {"level": level, "semester": semester},
-            sort=[("created_at", -1)],
+            sort=[("_id", -1)],
         )
     current_week = _academic_week(
         cal.get("lectures_start_date") if cal else None,
