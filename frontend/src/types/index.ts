@@ -21,6 +21,22 @@ export interface Course {
   weeks_uploaded: number[];
 }
 
+
+export interface QuestionFlag {
+  question_id: string;
+  flag_count: number;
+  latest_flagged_at: string | null;
+  reasons: string[];
+  reporters: string[];
+  status: 'open' | 'resolved';
+  course_id: string | null;
+  course_code: string;
+  course_title: string;
+  question_text: string;
+  week_number: number | null;
+  is_active: boolean;
+}
+
 export interface Question {
   id: string;
   course_id: string;
