@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 from bson import ObjectId
 
 from app.core.deps import get_current_user
-from app.core.database import progress_col, courses_col, attempts_col, questions_col
+from app.core.database import progress_col, courses_col, attempts_col, questions_col, calendars_col
 from app.services.feed_service import (
     get_or_create_daily_feed, submit_answer,
     get_unlocked_week, get_active_calendar, _academic_week,
@@ -59,6 +59,11 @@ async def answer(body: AnswerRequest, current_user: dict = Depends(get_current_u
 async def get_progress(current_user: dict = Depends(get_current_user)):
     level, semester = current_user["level"], current_user["semester"]
     cal = await get_active_calendar(level, semester)
+    if not cal:
+        cal = await calendars_col().find_one(
+            {"level": level, "semester": semester},
+            sort=[("created_at", -1)],
+        )
     current_week = _academic_week(
         cal.get("lectures_start_date") if cal else None,
         cal.get("semester_end_date") if cal else None,
