@@ -15,6 +15,7 @@ from app.core.database import (
     questions_col, progress_col, feeds_col,
     exams_col, calendars_col, courses_col, attempts_col, profiles_col,
 )
+from app.core.database import question_flags_col
 
 logger = logging.getLogger(__name__)
 FEED_SIZE = 60
@@ -304,6 +305,10 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
     for qid in qids:
         q = qmap.get(qid)
         if not q:
+            continue
+        # Skip questions the user has flagged (open status)
+        flagged = await question_flags_col().find_one({"user_id": user_id, "question_id": qid, "status": "open"})
+        if flagged:
             continue
         is_done = qid in completed
         questions.append({

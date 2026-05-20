@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from bson import ObjectId
 from app.core.deps import get_current_user
-from app.core.database import questions_col, question_flags_col
+from app.core.database import questions_col, question_flags_col, model_feedback_col
 
 router = APIRouter()
 
@@ -55,4 +55,19 @@ async def flag_question(
         {"$set": payload},
         upsert=True,
     )
+    # Send a short feedback record to the model feedback queue for admin review
+    try:
+        await model_feedback_col().insert_one({
+            "question_id": question_id,
+            "course_id": question.get("course_id"),
+            "question_text": question.get("question_text"),
+            "reported_by": current_user["id"],
+            "reported_email": current_user.get("email"),
+            "reason": payload.get("reason"),
+            "status": "pending",
+            "created_at": datetime.utcnow(),
+        })
+    except Exception:
+        # non-fatal — feedback queue best-effort
+        pass
     return {"ok": True, "question_id": question_id, "flagged": True}

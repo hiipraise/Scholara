@@ -3,7 +3,7 @@ export interface User {
   id: string;
   email: string;
   full_name: string | null;
-  role: 'superadmin' | 'admin' | 'student';
+  role: "superadmin" | "admin" | "student";
   level: string;
   semester: number;
   is_active: boolean;
@@ -21,14 +21,13 @@ export interface Course {
   weeks_uploaded: number[];
 }
 
-
 export interface QuestionFlag {
   question_id: string;
   flag_count: number;
   latest_flagged_at: string | null;
   reasons: string[];
   reporters: string[];
-  status: 'open' | 'resolved';
+  status: "open" | "resolved";
   course_id: string | null;
   course_code: string;
   course_title: string;
@@ -42,9 +41,9 @@ export interface Question {
   course_id: string;
   week_number: number;
   question_text: string;
-  question_type: 'mcq' | 'true_false';
+  question_type: "mcq" | "true_false";
   options: Record<string, string> | null;
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: "easy" | "medium" | "hard";
   topic: string;
   is_completed: boolean;
   correct_answer: string | null;
@@ -121,7 +120,6 @@ export interface AcademicCalendar {
   is_active: boolean;
 }
 
-
 export interface DailyHistoryItem {
   date: string;
   attempted: number;
@@ -155,10 +153,14 @@ export interface CourseProfile {
   course_code: string;
   course_title: string;
   profile: {
+    focus_label?: string;
+    summary?: string;
     is_formula_heavy?: boolean;
     mix_targets?: { calculation: number; application: number; theory: number };
     difficulty_targets?: { easy: number; medium: number; hard: number };
     explanation_mode?: string;
+    revision_priority?: string;
+    study_tip?: string;
   };
 }
 

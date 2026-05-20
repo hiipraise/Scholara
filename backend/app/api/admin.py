@@ -9,6 +9,8 @@ from app.core.database import (
     exams_col, cycles_col, calendars_col,
     users_col, courses_col, questions_col, question_flags_col,
 )
+from app.core.database import model_feedback_col
+from app.services.study_cycle_service import refresh_study_cycle_for_term
 
 router = APIRouter()
 
@@ -104,31 +106,7 @@ async def _hydrate_cycle_docs(docs: list[dict]) -> list[dict]:
 
 
 async def _auto_generate_cycle(level: str, semester: int) -> list[dict]:
-    courses = await courses_col().find(
-        {"level": level, "semester": semester, "is_active": True},
-        {"_id": 1},
-    ).to_list(None)
-    if not courses:
-        return []
-    by_day: dict[int, list[str]] = {1: [], 2: [], 3: [], 4: [], 5: []}
-    for i, c in enumerate(courses):
-        day = (i % 5) + 1
-        by_day[day].append(str(c["_id"]))
-
-    docs = [
-        {
-            "level": level,
-            "semester": semester,
-            "day_number": day,
-            "course_ids": by_day[day],
-            "is_auto_generated": True,
-            "updated_at": datetime.utcnow(),
-        }
-        for day in range(1, 6)
-    ]
-    await cycles_col().delete_many({"level": level, "semester": semester})
-    await cycles_col().insert_many(docs)
-    return docs
+    return await refresh_study_cycle_for_term(level, semester)
 
 
 @router.get("/study-cycle")
@@ -313,12 +291,52 @@ async def resolve_question_flags(
     if body.deactivate_question:
         await questions_col().update_one({"_id": ObjectId(question_id)}, {"$set": {"is_active": False, "updated_at": now}})
 
+    question = await questions_col().find_one({"_id": ObjectId(question_id)})
+    if question:
+        await model_feedback_col().update_many(
+            {"question_id": question_id, "status": {"$ne": "archived"}},
+            {"$set": {
+                "course_id": question.get("course_id"),
+                "question_text": question.get("question_text"),
+                "status": "resolved",
+                "resolved_at": now,
+                "resolved_by": admin["id"],
+                "deactivated": body.deactivate_question,
+                "resolution_note": (
+                    "Question was disabled after admin review." if body.deactivate_question
+                    else "Question was reviewed and kept active."
+                ),
+                "updated_at": now,
+            }, "$setOnInsert": {"created_at": now}},
+        )
+
     return {
         "ok": True,
         "question_id": question_id,
         "resolved_count": result.modified_count,
         "deactivated": body.deactivate_question,
     }
+
+
+@router.get("/model-feedback")
+async def list_model_feedback(status: str = "pending", admin: dict = Depends(get_admin_user)):
+    filt = {"status": status} if status != "all" else {}
+    docs = await model_feedback_col().find(filt).sort("created_at", -1).to_list(None)
+    out = []
+    for d in docs:
+        doc = dict(d)
+        doc["id"] = str(doc.pop("_id"))
+        out.append(doc)
+    return out
+
+
+@router.patch("/model-feedback/{feedback_id}/process")
+async def process_model_feedback(feedback_id: str, action: str = "archive", admin: dict = Depends(get_admin_user)):
+    # action: archive|escalate|apply
+    result = await model_feedback_col().update_one({"_id": ObjectId(feedback_id)}, {"$set": {"status": action, "processed_at": datetime.utcnow(), "processed_by": admin["id"]}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Feedback item not found")
+    return {"ok": True, "feedback_id": feedback_id, "action": action}
 
 # ── Users (SuperAdmin only) ────────────────────────────────────────────────
 

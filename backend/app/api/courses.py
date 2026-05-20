@@ -8,6 +8,7 @@ import os, uuid
 from app.core.config import settings
 from app.core.deps import get_current_user, get_admin_user
 from app.core.database import courses_col, pdfs_col, questions_col
+from app.services.study_cycle_service import refresh_study_cycle_for_term
 
 router = APIRouter()
 
@@ -67,6 +68,10 @@ async def create_course(body: CourseCreate, admin: dict = Depends(get_admin_user
     doc["code"] = doc["code"].upper()
     doc["is_active"] = True
     result = await courses_col().insert_one(doc)
+    try:
+        await refresh_study_cycle_for_term(doc["level"], doc["semester"])
+    except Exception:
+        pass
     return {"id": str(result.inserted_id), "code": doc["code"], "title": doc["title"]}
 
 
@@ -173,7 +178,7 @@ async def _process_pdf_bg(
     from app.services.ai_service import process_pdf_file
     from app.services.intelligence_service import upsert_course_intelligence
     try:
-        data = await process_pdf_file(file_path, course_code, course_title, week_number)
+        data = await process_pdf_file(file_path, course_code, course_title, week_number, course_id=course_id)
         await pdfs_col().update_one(
             {"_id": ObjectId(pdf_id)},
             {"$set": {
@@ -211,6 +216,8 @@ async def _process_pdf_bg(
             key_formulas=data.get("key_formulas", []),
             key_points=data.get("key_points", []),
             summary=data.get("summary", ""),
+            formula_cards=data.get("formula_cards", []),
+            profile_data=data.get("profile", {}),
         )
     except Exception as e:
         await pdfs_col().update_one(

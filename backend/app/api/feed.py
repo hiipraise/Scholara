@@ -157,12 +157,18 @@ async def build_practice_feed(body: PracticeRequest, current_user: dict = Depend
     semester = current_user["semester"]
     user_id = current_user["id"]
 
-    # Validate courses belong to user's level/semester
-    match = {"level": level, "semester": semester, "is_active": True}
     if body.course_ids:
-        match["_id"] = {"$in": [ObjectId(cid) for cid in body.course_ids if ObjectId.is_valid(cid)]}
+        selected_ids = [ObjectId(cid) for cid in body.course_ids if ObjectId.is_valid(cid)]
+        selected_courses = await courses_col().find(
+            {"_id": {"$in": selected_ids}, "is_active": True},
+            {"_id": 1, "code": 1},
+        ).to_list(None)
+    else:
+        selected_courses = await courses_col().find(
+            {"level": level, "semester": semester, "is_active": True},
+            {"_id": 1, "code": 1},
+        ).to_list(None)
 
-    selected_courses = await courses_col().find(match, {"_id": 1, "code": 1}).to_list(None)
     if not selected_courses:
         return {"questions": [], "total": 0, "completed_count": 0, "progress_pct": 0, "is_custom": True}
 
