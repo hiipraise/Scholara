@@ -19,7 +19,12 @@ import { format, parseISO } from "date-fns";
 import clsx from "clsx";
 import { adminApi, coursesApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
-import type { ExamSlot, QuestionFlag, User as UserType } from "../types";
+import type {
+  AuditLogEntry,
+  ExamSlot,
+  QuestionFlag,
+  User as UserType,
+} from "../types";
 import toast from "react-hot-toast";
 
 type Tab = "exam" | "cycle" | "calendar" | "flags" | "users";
@@ -28,6 +33,12 @@ export default function AdminPage() {
   const { user } = useAuthStore();
   const [tab, setTab] = useState<Tab>("exam");
   const isSuperAdmin = user?.role === "superadmin";
+
+  const { data: jobStats } = useQuery({
+    queryKey: ["admin-jobs"],
+    queryFn: () => adminApi.getJobs().then((r) => r.data),
+    refetchInterval: 5000,
+  });
 
   const TABS: { id: Tab; label: string; icon: ElementType }[] = [
     { id: "exam", label: "Exam Timetable", icon: Calendar },
@@ -55,6 +66,91 @@ export default function AdminPage() {
           {isSuperAdmin ? "SuperAdmin" : "Admin"} — Full system control
         </p>
       </motion.div>
+
+      {jobStats && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="card p-4 space-y-3"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-cream-200/35 text-xs tracking-widest uppercase font-body mb-1">
+                Background PDF Jobs
+              </div>
+              <h3 className="font-display text-lg text-cream-200">
+                Queue depth: {jobStats.queue_depth}
+              </h3>
+              <p className="text-cream-200/40 text-xs mt-1">
+                Monitoring pending and processing PDF jobs with retry tracking.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["pending", "Pending", "text-accent-gold"],
+                  ["processing", "Processing", "text-accent-sky"],
+                  ["done", "Done", "text-accent-sage"],
+                  ["failed", "Failed", "text-accent-coral"],
+                ] as const
+              ).map(([key, label, color]) => (
+                <span
+                  key={key}
+                  className={clsx(
+                    "badge border text-[10px] px-2 py-1",
+                    color,
+                    "border-cream-200/10 bg-cream-200/4",
+                  )}
+                >
+                  {label}: {jobStats.counts[key]}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {jobStats.jobs.length > 0 ? (
+              jobStats.jobs.slice(0, 5).map((job) => (
+                <div
+                  key={job.id}
+                  className="flex flex-col gap-1 rounded-xl border border-cream-200/8 bg-cream-200/4 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="text-cream-200/85 text-sm font-medium truncate">
+                      {job.course_code} · Week {job.week_number}
+                    </div>
+                    <div className="text-cream-200/35 text-xs truncate">
+                      {job.course_title} · {job.job_type} · attempt{" "}
+                      {job.attempt_count}/{job.max_attempts}
+                      {job.last_error ? ` · ${job.last_error}` : ""}
+                    </div>
+                  </div>
+                  <div
+                    className={clsx(
+                      "badge border text-[10px] self-start sm:self-auto",
+                      job.status === "pending" &&
+                        "border-accent-gold/25 bg-accent-gold/10 text-accent-gold",
+                      job.status === "processing" &&
+                        "border-accent-sky/25 bg-accent-sky/10 text-accent-sky",
+                      job.status === "done" &&
+                        "border-accent-sage/25 bg-accent-sage/10 text-accent-sage",
+                      job.status === "failed" &&
+                        "border-accent-coral/25 bg-accent-coral/10 text-accent-coral",
+                    )}
+                  >
+                    {job.status}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-cream-200/35 text-sm">
+                No PDF jobs recorded yet.
+              </p>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-indigo-900/80 rounded-2xl border border-cream-200/8 overflow-x-auto">
@@ -1025,6 +1121,11 @@ function UsersAdmin() {
     queryFn: () => adminApi.listUsers().then((r) => r.data),
   });
 
+  const { data: auditLogs } = useQuery({
+    queryKey: ["admin-audit-logs"],
+    queryFn: () => adminApi.getAuditLogs().then((r) => r.data),
+  });
+
   const createMutation = useMutation({
     mutationFn: () => adminApi.createUser(newUser),
     onSuccess: () => {
@@ -1253,6 +1354,52 @@ function UsersAdmin() {
             No users found.
           </div>
         )}
+      </div>
+
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h4 className="text-cream-200/70 text-sm font-semibold">
+              Audit Log
+            </h4>
+            <p className="text-cream-200/35 text-xs mt-1">
+              Latest 100 destructive actions and privileged changes.
+            </p>
+          </div>
+          <span className="badge border border-cream-200/10 text-cream-200/45 text-[10px]">
+            {auditLogs?.length ?? 0} entries
+          </span>
+        </div>
+
+        <div className="space-y-2 max-h-[32rem] overflow-auto pr-1">
+          {auditLogs?.length ? (
+            auditLogs.map((entry: AuditLogEntry) => (
+              <div
+                key={entry.id}
+                className="rounded-xl border border-cream-200/8 bg-cream-200/4 px-3 py-2"
+              >
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-cream-200/85 text-sm font-medium truncate">
+                      {entry.action}
+                    </div>
+                    <div className="text-cream-200/35 text-xs truncate">
+                      actor {entry.actor_id} · target {entry.target_id}
+                    </div>
+                  </div>
+                  <div className="text-cream-200/30 text-[10px] shrink-0">
+                    {format(parseISO(entry.timestamp), "MMM d, yyyy h:mm a")}
+                  </div>
+                </div>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/20 p-2 text-[10px] leading-relaxed text-cream-200/55">
+                  {JSON.stringify(entry.payload, null, 2)}
+                </pre>
+              </div>
+            ))
+          ) : (
+            <p className="text-cream-200/35 text-sm">No audit entries yet.</p>
+          )}
+        </div>
       </div>
     </div>
   );

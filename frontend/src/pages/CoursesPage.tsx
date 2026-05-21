@@ -60,24 +60,121 @@ function PDFRow({
 
   const deleteMutation = useMutation({
     mutationFn: () => coursesApi.deletePdf(courseId, pdf.id),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["course-pdfs", courseId] });
+      await qc.cancelQueries({ queryKey: ["courses", "all"] });
+
+      const previousPdfs = qc.getQueryData<CoursePDF[]>([
+        "course-pdfs",
+        courseId,
+      ]);
+      const previousCourses = qc.getQueryData<Course[]>(["courses", "all"]);
+
+      qc.setQueryData<CoursePDF[]>(["course-pdfs", courseId], (current) =>
+        current ? current.filter((item) => item.id !== pdf.id) : current,
+      );
+
+      qc.setQueryData<Course[]>(["courses", "all"], (current) => {
+        if (!current) return current;
+        const nextPdfs = (previousPdfs || []).filter(
+          (item) => item.id !== pdf.id,
+        );
+        const nextWeeks = Array.from(
+          new Set(nextPdfs.map((item) => item.week_number)),
+        ).sort((a, b) => a - b);
+        return current.map((course) =>
+          course.id === courseId
+            ? {
+                ...course,
+                pdf_count: Math.max(0, course.pdf_count - 1),
+                weeks_uploaded: nextWeeks,
+              }
+            : course,
+        );
+      });
+
+      return { previousPdfs, previousCourses };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previousPdfs) {
+        qc.setQueryData(["course-pdfs", courseId], context.previousPdfs);
+      }
+      if (context?.previousCourses) {
+        qc.setQueryData(["courses", "all"], context.previousCourses);
+      }
+      toast.error(err.response?.data?.detail || "Failed to delete PDF");
+    },
     onSuccess: () => {
       toast.success("PDF removed");
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["course-pdfs", courseId] });
       qc.invalidateQueries({ queryKey: ["courses"] });
     },
-    onError: () => toast.error("Failed to delete PDF"),
   });
 
   const weekMutation = useMutation({
     mutationFn: (week: number) =>
       coursesApi.updatePdfWeek(courseId, pdf.id, week),
+    onMutate: async (week) => {
+      const clamped = Math.max(1, Math.min(20, week));
+      await qc.cancelQueries({ queryKey: ["course-pdfs", courseId] });
+      await qc.cancelQueries({ queryKey: ["courses", "all"] });
+
+      const previousPdfs = qc.getQueryData<CoursePDF[]>([
+        "course-pdfs",
+        courseId,
+      ]);
+      const previousCourses = qc.getQueryData<Course[]>(["courses", "all"]);
+
+      qc.setQueryData<CoursePDF[]>(["course-pdfs", courseId], (current) => {
+        if (!current) return current;
+        return current.map((item) =>
+          item.id === pdf.id ? { ...item, week_number: clamped } : item,
+        );
+      });
+
+      qc.setQueryData<Course[]>(["courses", "all"], (current) => {
+        if (!current) return current;
+        const nextPdfs = (previousPdfs || []).map((item) =>
+          item.id === pdf.id ? { ...item, week_number: clamped } : item,
+        );
+        const nextWeeks = Array.from(
+          new Set(nextPdfs.map((item) => item.week_number)),
+        ).sort((a, b) => a - b);
+        return current.map((course) =>
+          course.id === courseId
+            ? {
+                ...course,
+                weeks_uploaded: nextWeeks,
+              }
+            : course,
+        );
+      });
+
+      setEditingWeek(false);
+      return { previousPdfs, previousCourses, previousWeek: pdf.week_number };
+    },
+    onError: (err: any, _week, context) => {
+      if (context?.previousPdfs) {
+        qc.setQueryData(["course-pdfs", courseId], context.previousPdfs);
+      }
+      if (context?.previousCourses) {
+        qc.setQueryData(["courses", "all"], context.previousCourses);
+      }
+      if (context?.previousWeek != null) {
+        setWeekDraft(context.previousWeek);
+        setEditingWeek(true);
+      }
+      toast.error(err.response?.data?.detail || "Failed to update week");
+    },
     onSuccess: (_, week) => {
       toast.success(`Moved to Week ${week}`);
-      setEditingWeek(false);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["course-pdfs", courseId] });
       qc.invalidateQueries({ queryKey: ["courses"] });
     },
-    onError: () => toast.error("Failed to update week"),
   });
 
   function handleWeekSave() {
@@ -300,14 +397,41 @@ function CourseCard({
 
   const deleteCourseMutation = useMutation({
     mutationFn: () => coursesApi.deleteCourse(course.id),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["courses", "all"] });
+      await qc.cancelQueries({ queryKey: ["course-pdfs", course.id] });
+
+      const previousCourses = qc.getQueryData<Course[]>(["courses", "all"]);
+      const previousPdfs = qc.getQueryData<CoursePDF[]>([
+        "course-pdfs",
+        course.id,
+      ]);
+
+      qc.setQueryData<Course[]>(["courses", "all"], (current) => {
+        if (!current) return current;
+        return current.filter((item) => item.id !== course.id);
+      });
+      qc.setQueryData<CoursePDF[]>(["course-pdfs", course.id], []);
+
+      return { previousCourses, previousPdfs };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previousCourses) {
+        qc.setQueryData(["courses", "all"], context.previousCourses);
+      }
+      if (context?.previousPdfs) {
+        qc.setQueryData(["course-pdfs", course.id], context.previousPdfs);
+      }
+      toast.error(err.response?.data?.detail || "Failed to delete course");
+    },
     onSuccess: () => {
       toast.success("Course deleted");
-      qc.invalidateQueries({ queryKey: ["courses"] });
       qc.invalidateQueries({ queryKey: ["feed"] });
       qc.invalidateQueries({ queryKey: ["study-cycle"] });
     },
-    onError: (err: any) =>
-      toast.error(err.response?.data?.detail || "Failed to delete course"),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["courses"] });
+    },
   });
 
   function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {

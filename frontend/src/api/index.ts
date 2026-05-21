@@ -17,6 +17,8 @@ import type {
   CourseTopic,
   CourseFormula,
   CourseDeepDiveNote,
+  PdfJobSummary,
+  AuditLogEntry,
 } from "../types";
 
 // Feed
@@ -145,6 +147,9 @@ export const adminApi = {
     apiClient.patch(`/admin/question-flags/resolve-all`, {
       deactivate_question,
     }),
+
+  getJobs: () => apiClient.get<PdfJobSummary>("/admin/jobs"),
+  getAuditLogs: () => apiClient.get<AuditLogEntry[]>("/admin/audit-logs"),
 };
 
 // Users

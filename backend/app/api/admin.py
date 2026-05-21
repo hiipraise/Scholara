@@ -5,12 +5,16 @@ from bson import ObjectId
 from datetime import datetime, date
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
+from app.core.audit_logger import get_audit_recorder
 from app.core.database import (
     exams_col, cycles_col, calendars_col,
-    users_col, courses_col, questions_col, question_flags_col,
+    users_col, courses_col, questions_col, question_flags_col, pdf_jobs_col, audit_logs_col,
 )
 from app.core.database import model_feedback_col
-from app.services.study_cycle_service import refresh_study_cycle_for_term
+from app.services.study_cycle_service import (
+    refresh_study_cycle_for_term,
+    hydrate_ranked_cycle_docs,
+)
 
 router = APIRouter()
 
@@ -83,28 +87,6 @@ class StudyCycleIn(BaseModel):
     days: List[dict]   # [{day_number: 1, course_ids: ["id1","id2"]}, ...]
 
 
-async def _hydrate_cycle_docs(docs: list[dict]) -> list[dict]:
-    all_cids = set()
-    for d in docs:
-        all_cids.update(d.get("course_ids", []))
-
-    courses_map: dict[str, dict] = {}
-    for cid in all_cids:
-        if ObjectId.is_valid(cid):
-            c = await courses_col().find_one({"_id": ObjectId(cid)})
-            if c:
-                courses_map[cid] = {"id": cid, "code": c["code"], "title": c["title"]}
-
-    return [
-        {
-            "day_number": d["day_number"],
-            "courses": [courses_map[cid] for cid in d.get("course_ids", []) if cid in courses_map],
-            "is_auto_generated": d.get("is_auto_generated", False),
-        }
-        for d in docs
-    ]
-
-
 async def _auto_generate_cycle(level: str, semester: int) -> list[dict]:
     return await refresh_study_cycle_for_term(level, semester)
 
@@ -122,7 +104,7 @@ async def get_study_cycle(
         docs = await _auto_generate_cycle(level, semester)
         docs = sorted(docs, key=lambda x: x["day_number"])
 
-    return await _hydrate_cycle_docs(docs)
+    return await hydrate_ranked_cycle_docs(docs, level, semester)
 
 @router.get("/study-cycle/history")
 async def get_study_cycle_history(current_user: dict = Depends(get_current_user)):
@@ -134,7 +116,7 @@ async def get_study_cycle_history(current_user: dict = Depends(get_current_user)
 
     out = []
     for (level, semester), term_docs in grouped.items():
-        hydrated = await _hydrate_cycle_docs(term_docs)
+        hydrated = await hydrate_ranked_cycle_docs(term_docs, level, semester)
         out.append({"level": level, "semester": semester, "days": hydrated})
     out.sort(key=lambda x: (int(x["level"].replace("L", "")), x["semester"]))
     return out
@@ -227,6 +209,44 @@ def _iso(value):
     return value.isoformat() if hasattr(value, "isoformat") else value
 
 
+def _audit(doc: dict) -> dict:
+    out = dict(doc)
+    out["id"] = str(out.pop("_id", ""))
+    if out.get("timestamp") is not None:
+        out["timestamp"] = _iso(out["timestamp"])
+    return out
+
+
+def _job_doc(doc: dict) -> dict:
+    out = dict(doc)
+    out["id"] = str(out.pop("_id", ""))
+    for key in ("created_at", "updated_at", "last_attempt_at", "completed_at", "failed_at"):
+        if key in out and out[key] is not None:
+            out[key] = _iso(out[key])
+    return out
+
+
+@router.get("/jobs")
+async def list_jobs(admin: dict = Depends(get_admin_user)):
+    docs = await pdf_jobs_col().find({}).sort([("updated_at", -1), ("created_at", -1)]).to_list(100)
+    counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0}
+    for doc in docs:
+        status = doc.get("status", "pending")
+        if status in counts:
+            counts[status] += 1
+    return {
+        "queue_depth": counts["pending"] + counts["processing"],
+        "counts": counts,
+        "jobs": [_job_doc(doc) for doc in docs],
+    }
+
+
+@router.get("/audit-logs")
+async def list_audit_logs(admin: dict = Depends(get_superadmin_user)):
+    docs = await audit_logs_col().find({}).sort("timestamp", -1).limit(100).to_list(100)
+    return [_audit(doc) for doc in docs]
+
+
 @router.get("/question-flags")
 async def list_question_flags(status: str = "open", admin: dict = Depends(get_admin_user)):
     match = {} if status == "all" else {"status": status}
@@ -278,6 +298,7 @@ async def list_question_flags(status: str = "open", admin: dict = Depends(get_ad
 async def resolve_question_flags(
     question_id: str,
     body: FlagResolveIn,
+    audit = Depends(get_audit_recorder),
     admin: dict = Depends(get_admin_user),
 ):
     if not ObjectId.is_valid(question_id):
@@ -310,6 +331,16 @@ async def resolve_question_flags(
             }, "$setOnInsert": {"created_at": now}},
         )
 
+    if body.deactivate_question:
+        await audit(
+            "question_flag_resolve",
+            question_id,
+            {
+                "deactivate_question": True,
+                "resolved_count": result.modified_count,
+            },
+        )
+
     return {
         "ok": True,
         "question_id": question_id,
@@ -321,6 +352,7 @@ async def resolve_question_flags(
 @router.patch("/question-flags/resolve-all")
 async def resolve_all_question_flags(
     body: FlagResolveIn,
+    audit = Depends(get_audit_recorder),
     admin: dict = Depends(get_admin_user),
 ):
     now = datetime.utcnow()
@@ -363,6 +395,17 @@ async def resolve_all_question_flags(
             ),
             "updated_at": now,
         }},
+    )
+
+    await audit(
+        "bulk_question_flag_resolution",
+        "all-open-question-flags",
+        {
+            "question_count": len(valid_qids),
+            "resolved_count": result.modified_count,
+            "deactivated_count": deactivated_count,
+            "deactivate_question": body.deactivate_question,
+        },
     )
 
     return {
@@ -449,6 +492,25 @@ async def update_level(
 
 
 @router.delete("/users/{user_id}")
-async def deactivate_user(user_id: str, superadmin: dict = Depends(get_superadmin_user)):
+async def deactivate_user(
+    user_id: str,
+    audit = Depends(get_audit_recorder),
+    superadmin: dict = Depends(get_superadmin_user),
+):
+    user = await users_col().find_one({"_id": ObjectId(user_id)})
     await users_col().update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": False}})
+    if user:
+        await audit(
+            "user_deactivated",
+            user_id,
+            {
+                "user": {
+                    "email": user.get("email"),
+                    "full_name": user.get("full_name"),
+                    "role": user.get("role"),
+                    "level": user.get("level"),
+                    "semester": user.get("semester"),
+                }
+            },
+        )
     return {"message": "User deactivated"}

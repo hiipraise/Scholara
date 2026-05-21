@@ -34,6 +34,8 @@ def profiles_col():    return col("course_profiles")
 def topics_col():      return col("course_topics")
 def formulas_col():    return col("course_formulas")
 def notes_col():       return col("content_notes")
+def pdf_jobs_col():    return col("pdf_jobs")
+def audit_logs_col():  return col("audit_log")
 
 async def create_indexes():
     db = get_db()
@@ -56,3 +58,7 @@ async def create_indexes():
     await db.course_topics.create_index([("course_id", 1), ("topic", 1), ("subtopic", 1)], unique=True)
     await db.course_formulas.create_index([("course_id", 1), ("formula_name", 1)], unique=True)
     await db.content_notes.create_index([("course_id", 1), ("topic", 1)])
+    await db.pdf_jobs.create_index([("status", 1), ("updated_at", -1)])
+    await db.pdf_jobs.create_index([("course_id", 1), ("pdf_id", 1)], unique=True)
+    await db.audit_log.create_index([("timestamp", -1)])
+    await db.audit_log.create_index([("actor_id", 1), ("timestamp", -1)])

@@ -7,12 +7,16 @@ import logging
 import json
 from datetime import datetime
 from typing import Optional, Any, Dict
+from fastapi import Depends, Request
+
+from app.core.database import audit_logs_col
+from app.core.deps import get_current_user
 from app.core.config import settings
 
 # Configure audit logger
 audit_logger = logging.getLogger("audit")
-if settings.ENABLE_AUDIT_LOG:
-    handler = logging.FileHandler(settings.AUDIT_LOG_FILE)
+if getattr(settings, "ENABLE_AUDIT_LOG", False):
+    handler = logging.FileHandler(getattr(settings, "AUDIT_LOG_FILE", "logs/audit.log"))
     handler.setFormatter(
         logging.Formatter(
             '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
@@ -25,7 +29,7 @@ if settings.ENABLE_AUDIT_LOG:
 
 def log_authentication(email: str, success: bool, reason: str = "", ip: str = ""):
     """Log authentication attempt."""
-    if not settings.ENABLE_AUDIT_LOG:
+    if not getattr(settings, "ENABLE_AUDIT_LOG", False):
         return
     
     audit_logger.info(
@@ -42,7 +46,7 @@ def log_authentication(email: str, success: bool, reason: str = "", ip: str = ""
 
 def log_authorization(user_id: str, resource: str, action: str, allowed: bool, ip: str = ""):
     """Log authorization check."""
-    if not settings.ENABLE_AUDIT_LOG:
+    if not getattr(settings, "ENABLE_AUDIT_LOG", False):
         return
     
     audit_logger.info(
@@ -60,7 +64,7 @@ def log_authorization(user_id: str, resource: str, action: str, allowed: bool, i
 
 def log_data_access(user_id: str, resource_type: str, resource_id: str, action: str, ip: str = ""):
     """Log data access events."""
-    if not settings.ENABLE_AUDIT_LOG:
+    if not getattr(settings, "ENABLE_AUDIT_LOG", False):
         return
     
     audit_logger.info(
@@ -78,7 +82,7 @@ def log_data_access(user_id: str, resource_type: str, resource_id: str, action: 
 
 def log_admin_action(admin_id: str, action: str, target: str, changes: Dict[str, Any], ip: str = ""):
     """Log administrative actions."""
-    if not settings.ENABLE_AUDIT_LOG:
+    if not getattr(settings, "ENABLE_AUDIT_LOG", False):
         return
     
     audit_logger.info(
@@ -96,7 +100,7 @@ def log_admin_action(admin_id: str, action: str, target: str, changes: Dict[str,
 
 def log_security_event(event_type: str, details: Dict[str, Any], ip: str = ""):
     """Log security events (rate limit exceeded, failed validation, etc.)."""
-    if not settings.ENABLE_AUDIT_LOG:
+    if not getattr(settings, "ENABLE_AUDIT_LOG", False):
         return
     
     audit_logger.warning(
@@ -108,3 +112,32 @@ def log_security_event(event_type: str, details: Dict[str, Any], ip: str = ""):
             "ip": ip,
         })
     )
+
+
+async def record_audit_log(
+    actor_id: str,
+    action: str,
+    target_id: str,
+    payload: Dict[str, Any],
+):
+    await audit_logs_col().insert_one({
+        "actor_id": actor_id,
+        "action": action,
+        "target_id": target_id,
+        "payload": payload,
+        "timestamp": datetime.utcnow(),
+    })
+
+
+async def get_audit_recorder(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    async def _recorder(action: str, target_id: str, payload: Dict[str, Any]):
+        await record_audit_log(current_user["id"], action, target_id, {
+            **payload,
+            "path": request.url.path,
+            "method": request.method,
+        })
+
+    return _recorder

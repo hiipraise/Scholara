@@ -4,15 +4,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from app.core.config import settings
 from app.core.database import create_indexes, users_col
 from app.api import auth, users, courses, feed, admin, questions, intelligence
+from app.core.upload_rate_limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
 
 app = FastAPI(
     title="Scholara API — Nexus Core",
     description="AI-powered EdTech platform backend (MongoDB)",
     version="2.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.router.redirect_slashes = False
 

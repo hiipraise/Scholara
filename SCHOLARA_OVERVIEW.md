@@ -72,6 +72,7 @@ This document describes the Scholara platform: purpose, architecture, how the fr
   - Admins can add courses, upload PDFs to a course, edit PDF week numbers, and soft-delete courses.
   - `CourseCard` presents an expandable UI showing PDF uploads and a list of course PDFs (component `PDFRow`).
   - NOTE: `CourseCard` uses `role="button"` wrapper to avoid nested `<button>` warnings; inner buttons use `e.stopPropagation()` to avoid toggling the card when interacting with controls.
+  - PDF upload enforcement: server-side MIME validation, 50 MB max file size, and per-admin upload rate limiting.
 
 - Admin ([frontend/src/pages/AdminPage.tsx](frontend/src/pages/AdminPage.tsx))
   - Tabs: Exam Timetable, Study Cycle editing, Academic Calendar, Question Flags, Users.

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # SuperAdmin
     SUPERADMIN_EMAIL: str = "info.praisechinedu@gmail.com"
 
+    # Audit logging
+    ENABLE_AUDIT_LOG: bool = False
+    AUDIT_LOG_FILE: str = "logs/audit.log"
+
     # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:5173",

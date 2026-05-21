@@ -191,3 +191,44 @@ export interface CourseDeepDiveNote {
   note: string;
   references: string[];
 }
+
+export interface PdfJobStatus {
+  id: string;
+  job_type: string;
+  status: "pending" | "processing" | "done" | "failed";
+  attempt_count: number;
+  max_attempts: number;
+  course_id: string;
+  course_code: string;
+  course_title: string;
+  pdf_id: string;
+  week_number: number;
+  file_path: string;
+  file_name: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_attempt_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  last_error: string | null;
+}
+
+export interface PdfJobSummary {
+  queue_depth: number;
+  counts: {
+    pending: number;
+    processing: number;
+    done: number;
+    failed: number;
+  };
+  jobs: PdfJobStatus[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_id: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+}
