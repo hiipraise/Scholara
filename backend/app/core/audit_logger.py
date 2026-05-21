@@ -5,6 +5,7 @@ Tracks authentication, authorization, data access, and administrative actions.
 """
 import logging
 import json
+import os
 from datetime import datetime
 from typing import Optional, Any, Dict
 from fastapi import Depends, Request
@@ -16,15 +17,23 @@ from app.core.config import settings
 # Configure audit logger
 audit_logger = logging.getLogger("audit")
 if getattr(settings, "ENABLE_AUDIT_LOG", False):
-    handler = logging.FileHandler(getattr(settings, "AUDIT_LOG_FILE", "logs/audit.log"))
-    handler.setFormatter(
-        logging.Formatter(
-            '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+    log_file = getattr(settings, "AUDIT_LOG_FILE", "logs/audit.log")
+    try:
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(
+            logging.Formatter(
+                '%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
         )
-    )
-    audit_logger.addHandler(handler)
-    audit_logger.setLevel(logging.INFO)
+        audit_logger.addHandler(handler)
+        audit_logger.setLevel(logging.INFO)
+    except OSError:
+        # Logging should never prevent the application from starting.
+        audit_logger.addHandler(logging.NullHandler())
 
 
 def log_authentication(email: str, success: bool, reason: str = "", ip: str = ""):
