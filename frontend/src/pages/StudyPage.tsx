@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { format, parseISO, isToday, isPast, addDays } from "date-fns";
 import clsx from "clsx";
-import { adminApi } from "../api/index";
+import { adminApi, coursesApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
 import type { ExamSlot } from "../types";
 
@@ -65,6 +65,22 @@ export default function StudyPage() {
     queryFn: () =>
       adminApi.getStudyCycle(user?.level, user?.semester).then((r) => r.data),
   });
+
+  // Fetch course metadata to make the study cycle "smarter"
+  const { data: courseList } = useQuery({
+    queryKey: ["courses", user?.level, user?.semester],
+    queryFn: () =>
+      coursesApi.list(user?.level, user?.semester).then((r) => r.data),
+  });
+
+  const courseMap = useMemo(() => {
+    const m = new Map<
+      string,
+      typeof courseList extends (infer T)[] ? T : any
+    >();
+    (courseList || []).forEach((c: any) => m.set(c.id, c));
+    return m;
+  }, [courseList]);
 
   // Calendars and history are needed to select past terms for exam fetch
   const { data: calendars } = useQuery({
@@ -133,12 +149,63 @@ export default function StudyPage() {
   const displayedCycle =
     cycleTab === "current" ? cycle : selectedPast?.days || [];
 
+  // Build a smarter cycle view: filter empty courses, prioritize by question/pdf counts,
+  // and avoid immediate repeats across consecutive days.
+  const smartCycle = useMemo(() => {
+    if (!displayedCycle) return [] as typeof displayedCycle;
+
+    // map days and score courses
+    const mapped = displayedCycle.map((day) => {
+      const scored = day.courses
+        .map((c) => {
+          const meta = courseMap.get(c.id);
+          return {
+            id: c.id,
+            code: c.code,
+            title: c.title,
+            question_count: meta?.question_count ?? 0,
+            pdf_count: meta?.pdf_count ?? 0,
+          };
+        })
+        // drop courses with no content
+        .filter((x) => x.question_count > 0 || x.pdf_count > 0)
+        .map((x) => ({ ...x, score: x.question_count + x.pdf_count * 0.5 }));
+
+      // sort by score desc
+      scored.sort((a, b) => b.score - a.score);
+
+      return { day_number: day.day_number, scored };
+    });
+
+    // avoid immediate repeats across consecutive days
+    const result: {
+      day_number: number;
+      courses: { id: string; code: string; title: string }[];
+    }[] = [];
+    for (let i = 0; i < mapped.length; i++) {
+      const prevIds = new Set(result[i - 1]?.courses.map((c) => c.id) || []);
+      const chosen: { id: string; code: string; title: string }[] = [];
+      for (const s of mapped[i].scored) {
+        if (!prevIds.has(s.id))
+          chosen.push({ id: s.id, code: s.code, title: s.title });
+      }
+      // fallback: if all were filtered out, allow original scored list (to avoid empty days)
+      if (chosen.length === 0) {
+        for (const s of mapped[i].scored)
+          chosen.push({ id: s.id, code: s.code, title: s.title });
+      }
+      result.push({ day_number: mapped[i].day_number, courses: chosen });
+    }
+
+    return result;
+  }, [displayedCycle, courseMap]);
+
   // Days to display: current, next 2
-  const displayDays = displayedCycle
+  const displayDays = smartCycle
     ? [
-        displayedCycle.find((d) => d.day_number === currentStudyDay),
-        displayedCycle.find((d) => d.day_number === (currentStudyDay % 5) + 1),
-        displayedCycle.find(
+        smartCycle.find((d) => d.day_number === currentStudyDay),
+        smartCycle.find((d) => d.day_number === (currentStudyDay % 5) + 1),
+        smartCycle.find(
           (d) => d.day_number === ((currentStudyDay + 1) % 5) + 1,
         ),
       ].filter(Boolean)

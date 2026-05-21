@@ -47,9 +47,6 @@ export default function HomePage() {
   );
   const [showFilters, setShowFilters] = useState(false);
   const [practiceCourseIds, setPracticeCourseIds] = useState<string[]>([]);
-  const [practiceCourseTab, setPracticeCourseTab] = useState<
-    "current" | "past"
-  >("current");
   const [practiceCount, setPracticeCount] = useState<30 | 60>(30);
   const [customFeed, setCustomFeed] = useState<any | null>(null);
   const [practiceResults, setPracticeResults] = useState<
@@ -58,6 +55,9 @@ export default function HomePage() {
   const [hiddenQuestionIds, setHiddenQuestionIds] = useState<string[]>([]);
   const [showPracticeResultModal, setShowPracticeResultModal] = useState(false);
   const [showFeedCompleteModal, setShowFeedCompleteModal] = useState(false);
+  const [feedModalMode, setFeedModalMode] = useState<"complete" | "flagged">(
+    "complete",
+  );
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
@@ -169,19 +169,55 @@ export default function HomePage() {
   const customDone =
     customFeed?.questions?.filter((q: Question) => q.is_completed).length ?? 0;
   const customCorrect = Object.values(practiceResults).filter(Boolean).length;
+  const shouldHideFlaggedLocally = Boolean(customFeed);
+
+  const activeQuestions: Question[] = useMemo(() => {
+    const source = customFeed ?? feed;
+    return source?.questions ?? [];
+  }, [customFeed, feed]);
+
+  const hiddenInActiveFeed = useMemo(
+    () =>
+      shouldHideFlaggedLocally
+        ? activeQuestions.filter((q) => hiddenQuestionIds.includes(q.id)).length
+        : 0,
+    [activeQuestions, hiddenQuestionIds, shouldHideFlaggedLocally],
+  );
+
+  const remainingActiveUnanswered = useMemo(
+    () =>
+      activeQuestions.filter(
+        (q) =>
+          !q.is_completed &&
+          (!shouldHideFlaggedLocally || !hiddenQuestionIds.includes(q.id)),
+      ).length,
+    [activeQuestions, hiddenQuestionIds, shouldHideFlaggedLocally],
+  );
 
   useEffect(() => {
     if (!customFeed?.questions?.length) return;
-    const allDone = customFeed.questions.every((q: Question) => q.is_completed);
-    if (allDone) setShowPracticeResultModal(true);
-  }, [customFeed]);
+    if (remainingActiveUnanswered === 0) {
+      setShowPracticeResultModal(true);
+    }
+  }, [customFeed, remainingActiveUnanswered]);
 
-  // Show modal when home feed is fully completed
+  // Show completion modal for true completion or "hidden-by-flag" exhaustion.
   useEffect(() => {
-    if (feed?.is_fully_completed) {
+    if (!feed) return;
+    if (feed.is_fully_completed) {
+      setFeedModalMode("complete");
+      setShowFeedCompleteModal(true);
+      return;
+    }
+    if (
+      !customFeed &&
+      remainingActiveUnanswered === 0 &&
+      hiddenInActiveFeed > 0
+    ) {
+      setFeedModalMode("flagged");
       setShowFeedCompleteModal(true);
     }
-  }, [feed?.is_fully_completed]);
+  }, [feed, customFeed, remainingActiveUnanswered, hiddenInActiveFeed]);
 
   // Build course map with colors
   const courseMap = useMemo(() => {
@@ -195,17 +231,10 @@ export default function HomePage() {
     return map;
   }, [courses]);
 
-  const rank = (level: string, semester: number) =>
-    (Number(level.replace("L", "")) || 0) * 10 + semester;
-  const currentRank = user ? rank(user.level, user.semester) : 0;
   const currentCourses = (courses || []).filter(
     (c) => c.level === user?.level && c.semester === user?.semester,
   );
-  const pastCourses = (courses || []).filter(
-    (c) => rank(c.level, c.semester) < currentRank,
-  );
-  const practicePool =
-    practiceCourseTab === "current" ? currentCourses : pastCourses;
+  const practicePool = currentCourses;
 
   // Filter questions
   const displayedQuestions = useMemo(() => {
@@ -217,11 +246,20 @@ export default function HomePage() {
     if (filterDone === "pending")
       qs = qs.filter((q: Question) => !q.is_completed);
     if (filterDone === "done") qs = qs.filter((q: Question) => q.is_completed);
-    // Exclude locally-hidden (flagged) questions for immediate UX response
-    if (hiddenQuestionIds.length)
+    // Exclude locally-hidden (flagged) questions for immediate UX response.
+    // Keep this behavior scoped to focused practice so home feed cannot appear "stuck"
+    // with only completed items left on screen.
+    if (shouldHideFlaggedLocally && hiddenQuestionIds.length)
       qs = qs.filter((q: Question) => !hiddenQuestionIds.includes(q.id));
     return qs;
-  }, [feed, customFeed, filterCourse, filterDone]);
+  }, [
+    feed,
+    customFeed,
+    filterCourse,
+    filterDone,
+    hiddenQuestionIds,
+    shouldHideFlaggedLocally,
+  ]);
 
   // Progress groups by course
   const questionsByCourse = useMemo(() => {
@@ -512,30 +550,6 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex rounded-xl border border-cream-200/10 p-1 mr-1">
-            <button
-              onClick={() => setPracticeCourseTab("current")}
-              className={clsx(
-                "px-2.5 py-1 text-[10px] rounded-md",
-                practiceCourseTab === "current"
-                  ? "bg-cream-200/12 text-cream-200"
-                  : "text-cream-200/40",
-              )}
-            >
-              Current
-            </button>
-            <button
-              onClick={() => setPracticeCourseTab("past")}
-              className={clsx(
-                "px-2.5 py-1 text-[10px] rounded-md",
-                practiceCourseTab === "past"
-                  ? "bg-cream-200/12 text-cream-200"
-                  : "text-cream-200/40",
-              )}
-            >
-              Past
-            </button>
-          </div>
           {practicePool?.map((c, i) => (
             <button
               key={c.id}
@@ -817,10 +831,12 @@ export default function HomePage() {
                 qc.invalidateQueries({ queryKey: ["feed", "stats"] });
               }}
               onFlagged={(qid) => {
-                // hide immediately in UI
-                setHiddenQuestionIds((prev) =>
-                  prev.includes(qid) ? prev : [...prev, qid],
-                );
+                if (shouldHideFlaggedLocally) {
+                  // hide immediately in focused-practice UI only
+                  setHiddenQuestionIds((prev) =>
+                    prev.includes(qid) ? prev : [...prev, qid],
+                  );
+                }
                 // also refresh server-side feed counters/stats
                 qc.invalidateQueries({ queryKey: ["feed", "today"] });
                 qc.invalidateQueries({ queryKey: ["feed", "stats"] });
@@ -921,7 +937,7 @@ export default function HomePage() {
             </motion.div>
           </>
         )}
-        {showFeedCompleteModal && feed?.is_fully_completed && (
+        {showFeedCompleteModal && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
@@ -940,8 +956,9 @@ export default function HomePage() {
                   Daily Feed Complete
                 </h3>
                 <p className="text-cream-200/55 text-sm mb-4">
-                  You've completed today's feed. Great work — consider reviewing
-                  flagged items or starting focused practice.
+                  {feedModalMode === "complete"
+                    ? "You've completed today's feed. Great work — consider reviewing flagged items or starting focused practice."
+                    : "You have no active questions left in view because some were flagged. You can show flagged questions again to continue this session."}
                 </p>
                 <div className="grid grid-cols-3 gap-2 mb-5">
                   <div className="bg-cream-200/5 rounded-lg p-3 text-center">
@@ -954,7 +971,7 @@ export default function HomePage() {
                   </div>
                   <div className="bg-cream-200/5 rounded-lg p-3 text-center">
                     <div className="text-cream-200/35 text-[10px] uppercase">
-                      Correct
+                      Done
                     </div>
                     <div className="text-accent-sage font-mono text-lg">
                       {feed?.completed_count ?? 0}
@@ -962,10 +979,12 @@ export default function HomePage() {
                   </div>
                   <div className="bg-cream-200/5 rounded-lg p-3 text-center">
                     <div className="text-cream-200/35 text-[10px] uppercase">
-                      Accuracy
+                      {feedModalMode === "complete" ? "Accuracy" : "Flagged"}
                     </div>
                     <div className="text-cream-200 font-mono text-lg">
-                      {feed?.progress_pct ?? 0}%
+                      {feedModalMode === "complete"
+                        ? `${feed?.progress_pct ?? 0}%`
+                        : hiddenInActiveFeed}
                     </div>
                   </div>
                 </div>
@@ -980,12 +999,18 @@ export default function HomePage() {
                     className="btn-primary text-sm"
                     onClick={() => {
                       setShowFeedCompleteModal(false);
+                      if (feedModalMode === "flagged") {
+                        setHiddenQuestionIds([]);
+                        return;
+                      }
                       setCustomFeed(null);
                       setPracticeResults({});
                       setShowPracticeResultModal(false);
                     }}
                   >
-                    Start Focused Practice
+                    {feedModalMode === "complete"
+                      ? "Start Focused Practice"
+                      : "Show Flagged Questions"}
                   </button>
                 </div>
               </div>

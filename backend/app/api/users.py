@@ -8,6 +8,8 @@ router = APIRouter()
 
 class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = None
+    level: Optional[str] = None
+    semester: Optional[int] = None
 
 def _s(u: dict) -> dict:
     u = dict(u)
@@ -24,9 +26,17 @@ async def update_profile(
     body: UpdateProfileRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    updates: dict = {}
     if body.full_name is not None:
+        updates["full_name"] = body.full_name
+    if body.level is not None:
+        updates["level"] = body.level
+    if body.semester is not None:
+        updates["semester"] = body.semester
+
+    if updates:
         await users_col().update_one(
             {"email": current_user["email"]},
-            {"$set": {"full_name": body.full_name}},
+            {"$set": updates},
         )
-    return {"message": "Profile updated", "full_name": body.full_name}
+    return {"message": "Profile updated", **updates}

@@ -1,41 +1,58 @@
-import { useState, type ElementType } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, type ElementType } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, Calendar, LayoutGrid, Settings, Plus, Trash2,
-  Edit2, Save, X, Shield, GraduationCap, Flag
-} from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import clsx from 'clsx';
-import { adminApi, coursesApi } from '../api/index';
-import { useAuthStore } from '../store/authStore';
-import type { ExamSlot, QuestionFlag, User as UserType } from '../types';
-import toast from 'react-hot-toast';
+  Users,
+  Calendar,
+  LayoutGrid,
+  Settings,
+  Plus,
+  Trash2,
+  Edit2,
+  Save,
+  X,
+  Shield,
+  GraduationCap,
+  Flag,
+} from "lucide-react";
+import { format, parseISO } from "date-fns";
+import clsx from "clsx";
+import { adminApi, coursesApi } from "../api/index";
+import { useAuthStore } from "../store/authStore";
+import type { ExamSlot, QuestionFlag, User as UserType } from "../types";
+import toast from "react-hot-toast";
 
-type Tab = 'exam' | 'cycle' | 'calendar' | 'flags' | 'users';
+type Tab = "exam" | "cycle" | "calendar" | "flags" | "users";
 
 export default function AdminPage() {
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<Tab>('exam');
-  const isSuperAdmin = user?.role === 'superadmin';
+  const [tab, setTab] = useState<Tab>("exam");
+  const isSuperAdmin = user?.role === "superadmin";
 
   const TABS: { id: Tab; label: string; icon: ElementType }[] = [
-    { id: 'exam', label: 'Exam Timetable', icon: Calendar },
-    { id: 'cycle', label: 'Study Cycle', icon: LayoutGrid },
-    { id: 'calendar', label: 'Academic Calendar', icon: Settings },
-    { id: 'flags', label: 'Question Flags', icon: Flag },
-    ...(isSuperAdmin ? [{ id: 'users' as Tab, label: 'Users', icon: Users }] : []),
+    { id: "exam", label: "Exam Timetable", icon: Calendar },
+    { id: "cycle", label: "Study Cycle", icon: LayoutGrid },
+    { id: "calendar", label: "Academic Calendar", icon: Settings },
+    { id: "flags", label: "Question Flags", icon: Flag },
+    ...(isSuperAdmin
+      ? [{ id: "users" as Tab, label: "Users", icon: Users }]
+      : []),
   ];
 
   return (
     <div className="space-y-6 pb-12">
-      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}>
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         <div className="text-cream-200/35 text-xs tracking-widest uppercase font-body mb-1">
           Administration
         </div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-cream-200">Admin Panel</h1>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-cream-200">
+          Admin Panel
+        </h1>
         <p className="text-cream-200/45 text-sm mt-1">
-          {isSuperAdmin ? 'SuperAdmin' : 'Admin'} — Full system control
+          {isSuperAdmin ? "SuperAdmin" : "Admin"} — Full system control
         </p>
       </motion.div>
 
@@ -46,10 +63,10 @@ export default function AdminPage() {
             key={id}
             onClick={() => setTab(id)}
             className={clsx(
-              'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap',
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap",
               tab === id
-                ? 'bg-cream-200/10 text-cream-200 border border-cream-200/10'
-                : 'text-cream-200/40 hover:text-cream-200/70'
+                ? "bg-cream-200/10 text-cream-200 border border-cream-200/10"
+                : "text-cream-200/40 hover:text-cream-200/70",
             )}
           >
             <Icon size={15} />
@@ -66,11 +83,11 @@ export default function AdminPage() {
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2 }}
         >
-          {tab === 'exam' && <ExamTimetableAdmin />}
-          {tab === 'cycle' && <StudyCycleAdmin />}
-          {tab === 'calendar' && <CalendarAdmin />}
-          {tab === 'flags' && <QuestionFlagsAdmin />}
-          {tab === 'users' && isSuperAdmin && <UsersAdmin />}
+          {tab === "exam" && <ExamTimetableAdmin />}
+          {tab === "cycle" && <StudyCycleAdmin />}
+          {tab === "calendar" && <CalendarAdmin />}
+          {tab === "flags" && <QuestionFlagsAdmin />}
+          {tab === "users" && isSuperAdmin && <UsersAdmin />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -82,99 +99,127 @@ function ExamTimetableAdmin() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
   const [newSlot, setNewSlot] = useState({
-    course_id: '',
-    exam_date: '',
-    start_time: '09:00',
-    end_time: '11:00',
-    venue: '',
-    level: user?.level || '100L',
+    course_id: "",
+    exam_date: "",
+    start_time: "09:00",
+    end_time: "11:00",
+    venue: "",
+    level: user?.level || "100L",
     semester: user?.semester || 1,
   });
 
   const { data: slots } = useQuery({
-    queryKey: ['exam-timetable', user?.level, user?.semester],
-    queryFn: () => adminApi.getExamTimetable(user?.level, user?.semester).then(r => r.data),
+    queryKey: ["exam-timetable", user?.level, user?.semester],
+    queryFn: () =>
+      adminApi
+        .getExamTimetable(user?.level, user?.semester)
+        .then((r) => r.data),
   });
 
   const { data: courses } = useQuery({
-    queryKey: ['courses', user?.level, user?.semester],
-    queryFn: () => coursesApi.list(user?.level, user?.semester).then(r => r.data),
+    queryKey: ["courses", user?.level, user?.semester],
+    queryFn: () =>
+      coursesApi.list(user?.level, user?.semester).then((r) => r.data),
   });
 
   const addMutation = useMutation({
     mutationFn: () => adminApi.createExamSlot(newSlot as any),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['exam-timetable'] });
-      toast.success('Exam slot added');
-      setNewSlot(s => ({ ...s, course_id: '', exam_date: '', venue: '' }));
+      qc.invalidateQueries({ queryKey: ["exam-timetable"] });
+      toast.success("Exam slot added");
+      setNewSlot((s) => ({ ...s, course_id: "", exam_date: "", venue: "" }));
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to add slot'),
+    onError: (e: any) =>
+      toast.error(e.response?.data?.detail || "Failed to add slot"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteExamSlot(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['exam-timetable'] });
-      toast.success('Slot removed');
+      qc.invalidateQueries({ queryKey: ["exam-timetable"] });
+      toast.success("Slot removed");
     },
   });
 
-  const byDate = slots?.reduce<Record<string, ExamSlot[]>>((acc, s) => {
-    if (!acc[s.exam_date]) acc[s.exam_date] = [];
-    acc[s.exam_date].push(s);
-    return acc;
-  }, {}) ?? {};
+  const byDate =
+    slots?.reduce<Record<string, ExamSlot[]>>((acc, s) => {
+      if (!acc[s.exam_date]) acc[s.exam_date] = [];
+      acc[s.exam_date].push(s);
+      return acc;
+    }, {}) ?? {};
 
   return (
     <div className="space-y-5">
       {/* Add form */}
       <div className="card p-5">
-        <h3 className="text-cream-200/70 text-sm font-semibold mb-4">Add Exam Slot</h3>
+        <h3 className="text-cream-200/70 text-sm font-semibold mb-4">
+          Add Exam Slot
+        </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <select
             value={newSlot.course_id}
-            onChange={e => setNewSlot(s => ({ ...s, course_id: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, course_id: e.target.value }))
+            }
             className="input-field col-span-2 sm:col-span-1"
           >
             <option value="">Select course...</option>
-            {courses?.map(c => (
-              <option key={c.id} value={c.id}>{c.code} — {c.title}</option>
+            {courses?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} — {c.title}
+              </option>
             ))}
           </select>
           <input
             type="date"
             value={newSlot.exam_date}
-            onChange={e => setNewSlot(s => ({ ...s, exam_date: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, exam_date: e.target.value }))
+            }
             className="input-field"
           />
           <input
             type="time"
             value={newSlot.start_time}
-            onChange={e => setNewSlot(s => ({ ...s, start_time: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, start_time: e.target.value }))
+            }
             className="input-field"
           />
           <input
             type="time"
             value={newSlot.end_time}
-            onChange={e => setNewSlot(s => ({ ...s, end_time: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, end_time: e.target.value }))
+            }
             className="input-field"
           />
           <input
             placeholder="Venue (optional)"
             value={newSlot.venue}
-            onChange={e => setNewSlot(s => ({ ...s, venue: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, venue: e.target.value }))
+            }
             className="input-field col-span-2 sm:col-span-1"
           />
           <select
             value={newSlot.level}
-            onChange={e => setNewSlot(s => ({ ...s, level: e.target.value }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, level: e.target.value }))
+            }
             className="input-field"
           >
-            {['100L', '200L', '300L', '400L'].map(l => <option key={l} value={l}>{l}</option>)}
+            {["100L", "200L", "300L", "400L"].map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
           </select>
           <select
             value={newSlot.semester}
-            onChange={e => setNewSlot(s => ({ ...s, semester: Number(e.target.value) }))}
+            onChange={(e) =>
+              setNewSlot((s) => ({ ...s, semester: Number(e.target.value) }))
+            }
             className="input-field"
           >
             <option value={1}>Semester 1</option>
@@ -183,48 +228,61 @@ function ExamTimetableAdmin() {
         </div>
         <button
           onClick={() => addMutation.mutate()}
-          disabled={!newSlot.course_id || !newSlot.exam_date || addMutation.isPending}
+          disabled={
+            !newSlot.course_id || !newSlot.exam_date || addMutation.isPending
+          }
           className="btn-primary text-sm flex items-center gap-2"
         >
           <Plus size={14} />
-          {addMutation.isPending ? 'Adding...' : 'Add Slot'}
+          {addMutation.isPending ? "Adding..." : "Add Slot"}
         </button>
       </div>
 
       {/* Existing slots grouped by date */}
       <div className="space-y-3">
-        {Object.keys(byDate).sort().map(date => (
-          <div key={date} className="card overflow-hidden">
-            <div className="px-5 py-3 border-b border-cream-200/8 bg-cream-200/3">
-              <span className="text-cream-200/80 text-sm font-semibold">
-                {format(parseISO(date), 'EEEE, MMMM d, yyyy')}
-              </span>
-            </div>
-            <div className="divide-y divide-cream-200/6">
-              {byDate[date].map(slot => (
-                <div key={slot.id} className="flex items-center gap-4 px-5 py-3">
-                  <div className="flex-1 min-w-0">
-                    <span className="text-cream-200/90 text-sm font-semibold mr-2">{slot.course_code}</span>
-                    <span className="text-cream-200/45 text-xs">{slot.course_title}</span>
-                    <div className="text-cream-200/35 text-xs mt-0.5">
-                      {slot.start_time} – {slot.end_time}
-                      {slot.venue && <span> · {slot.venue}</span>}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => deleteMutation.mutate(slot.id)}
-                    className="p-2 rounded-lg text-cream-200/20 hover:text-accent-coral hover:bg-accent-coral/10 transition-colors"
+        {Object.keys(byDate)
+          .sort()
+          .map((date) => (
+            <div key={date} className="card overflow-hidden">
+              <div className="px-5 py-3 border-b border-cream-200/8 bg-cream-200/3">
+                <span className="text-cream-200/80 text-sm font-semibold">
+                  {format(parseISO(date), "EEEE, MMMM d, yyyy")}
+                </span>
+              </div>
+              <div className="divide-y divide-cream-200/6">
+                {byDate[date].map((slot) => (
+                  <div
+                    key={slot.id}
+                    className="flex items-center gap-4 px-5 py-3"
                   >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-cream-200/90 text-sm font-semibold mr-2">
+                        {slot.course_code}
+                      </span>
+                      <span className="text-cream-200/45 text-xs">
+                        {slot.course_title}
+                      </span>
+                      <div className="text-cream-200/35 text-xs mt-0.5">
+                        {slot.start_time} – {slot.end_time}
+                        {slot.venue && <span> · {slot.venue}</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteMutation.mutate(slot.id)}
+                      className="p-2 rounded-lg text-cream-200/20 hover:text-accent-coral hover:bg-accent-coral/10 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
         {Object.keys(byDate).length === 0 && (
           <div className="card p-8 text-center">
-            <p className="text-cream-200/30 text-sm">No exam slots yet. Add the first one above.</p>
+            <p className="text-cream-200/30 text-sm">
+              No exam slots yet. Add the first one above.
+            </p>
           </div>
         )}
       </div>
@@ -237,66 +295,80 @@ function StudyCycleAdmin() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [editDays, setEditDays] = useState<{ day_number: number; course_ids: string[] }[]>([]);
+  const [editDays, setEditDays] = useState<
+    { day_number: number; course_ids: string[] }[]
+  >([]);
 
   const { data: cycle } = useQuery({
-    queryKey: ['study-cycle', user?.level, user?.semester],
-    queryFn: () => adminApi.getStudyCycle(user?.level, user?.semester).then(r => r.data),
+    queryKey: ["study-cycle", user?.level, user?.semester],
+    queryFn: () =>
+      adminApi.getStudyCycle(user?.level, user?.semester).then((r) => r.data),
   });
 
   const { data: courses } = useQuery({
-    queryKey: ['courses', user?.level, user?.semester],
-    queryFn: () => coursesApi.list(user?.level, user?.semester).then(r => r.data),
+    queryKey: ["courses", user?.level, user?.semester],
+    queryFn: () =>
+      coursesApi.list(user?.level, user?.semester).then((r) => r.data),
   });
 
   const updateMutation = useMutation({
     mutationFn: () =>
       adminApi.updateStudyCycle(user?.level!, user?.semester!, editDays),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['study-cycle'] });
+      qc.invalidateQueries({ queryKey: ["study-cycle"] });
       setEditing(false);
-      toast.success('Study cycle updated');
+      toast.success("Study cycle updated");
     },
-    onError: () => toast.error('Failed to save study cycle'),
+    onError: () => toast.error("Failed to save study cycle"),
   });
 
   function startEdit() {
     setEditDays(
-      cycle?.map(d => ({
+      cycle?.map((d) => ({
         day_number: d.day_number,
-        course_ids: d.courses.map(c => c.id),
-      })) ||
-        [1, 2, 3, 4, 5].map(n => ({ day_number: n, course_ids: [] }))
+        course_ids: d.courses.map((c) => c.id),
+      })) || [1, 2, 3, 4, 5].map((n) => ({ day_number: n, course_ids: [] })),
     );
     setEditing(true);
   }
 
   function toggleCourse(dayNum: number, courseId: string) {
-    setEditDays(prev =>
-      prev.map(d => {
+    setEditDays((prev) =>
+      prev.map((d) => {
         if (d.day_number !== dayNum) return d;
         const has = d.course_ids.includes(courseId);
         return {
           ...d,
           course_ids: has
-            ? d.course_ids.filter(id => id !== courseId)
+            ? d.course_ids.filter((id) => id !== courseId)
             : [...d.course_ids, courseId],
         };
-      })
+      }),
     );
   }
 
   const COURSE_COLORS = [
-    '#4a7fb5','#5a8a6e','#c9a84c','#8a6eaf',
-    '#d4604a','#4aa8af','#af8a4a','#6e8a5a',
+    "#4a7fb5",
+    "#5a8a6e",
+    "#c9a84c",
+    "#8a6eaf",
+    "#d4604a",
+    "#4aa8af",
+    "#af8a4a",
+    "#6e8a5a",
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-cream-200/70 text-sm font-semibold">5-Day Study Cycle</h3>
+        <h3 className="text-cream-200/70 text-sm font-semibold">
+          5-Day Study Cycle
+        </h3>
         {!editing ? (
-          <button onClick={startEdit} className="flex items-center gap-2 btn-ghost text-sm">
+          <button
+            onClick={startEdit}
+            className="flex items-center gap-2 btn-ghost text-sm"
+          >
             <Edit2 size={13} /> Edit Cycle
           </button>
         ) : (
@@ -307,9 +379,12 @@ function StudyCycleAdmin() {
               className="flex items-center gap-2 btn-primary text-sm"
             >
               <Save size={13} />
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
+              {updateMutation.isPending ? "Saving..." : "Save"}
             </button>
-            <button onClick={() => setEditing(false)} className="flex items-center gap-2 btn-ghost text-sm">
+            <button
+              onClick={() => setEditing(false)}
+              className="flex items-center gap-2 btn-ghost text-sm"
+            >
               <X size={13} /> Cancel
             </button>
           </div>
@@ -318,7 +393,7 @@ function StudyCycleAdmin() {
 
       {editing ? (
         <div className="space-y-3">
-          {editDays.map(day => (
+          {editDays.map((day) => (
             <div key={day.day_number} className="card p-4">
               <div className="text-cream-200/60 text-xs font-semibold uppercase tracking-wider mb-3">
                 Day {day.day_number}
@@ -334,8 +409,15 @@ function StudyCycleAdmin() {
                       className="badge border text-xs transition-all cursor-pointer"
                       style={
                         active
-                          ? { background: `${color}20`, borderColor: `${color}40`, color }
-                          : { borderColor: 'rgba(240,231,213,0.1)', color: 'rgba(240,231,213,0.35)' }
+                          ? {
+                              background: `${color}20`,
+                              borderColor: `${color}40`,
+                              color,
+                            }
+                          : {
+                              borderColor: "rgba(240,231,213,0.1)",
+                              color: "rgba(240,231,213,0.35)",
+                            }
                       }
                     >
                       {c.code}
@@ -349,7 +431,7 @@ function StudyCycleAdmin() {
       ) : (
         <div className="space-y-3">
           {cycle?.length ? (
-            cycle.map(day => (
+            cycle.map((day) => (
               <div key={day.day_number} className="card p-4">
                 <div className="text-cream-200/45 text-xs font-semibold uppercase tracking-wider mb-3">
                   Day {day.day_number}
@@ -376,8 +458,13 @@ function StudyCycleAdmin() {
             ))
           ) : (
             <div className="card p-8 text-center">
-              <p className="text-cream-200/30 text-sm">No study cycle configured yet.</p>
-              <button onClick={startEdit} className="mt-3 btn-ghost text-sm inline-flex items-center gap-2">
+              <p className="text-cream-200/30 text-sm">
+                No study cycle configured yet.
+              </p>
+              <button
+                onClick={startEdit}
+                className="mt-3 btn-ghost text-sm inline-flex items-center gap-2"
+              >
                 <Plus size={13} /> Set Up Cycle
               </button>
             </div>
@@ -392,12 +479,12 @@ function StudyCycleAdmin() {
 function CalendarAdmin() {
   const qc = useQueryClient();
   const emptyDates = {
-    school_resume_date: '',
-    lectures_start_date: '',
-    semester_end_date: '',
+    school_resume_date: "",
+    lectures_start_date: "",
+    semester_end_date: "",
   };
   const [form, setForm] = useState({
-    level: '100L',
+    level: "100L",
     semester: 1,
     ...emptyDates,
   });
@@ -407,39 +494,41 @@ function CalendarAdmin() {
   });
 
   const { data: calendars } = useQuery({
-    queryKey: ['calendars'],
-    queryFn: () => adminApi.getCalendars().then(r => r.data),
+    queryKey: ["calendars"],
+    queryFn: () => adminApi.getCalendars().then((r) => r.data),
   });
 
   const addMutation = useMutation({
     mutationFn: () => adminApi.createCalendar(form as any),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['calendars'] });
-      toast.success('Calendar entry added');
-      setForm(f => ({ ...f, ...emptyDates }));
+      qc.invalidateQueries({ queryKey: ["calendars"] });
+      toast.success("Calendar entry added");
+      setForm((f) => ({ ...f, ...emptyDates }));
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e: any) => toast.error(e.response?.data?.detail || "Failed"),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: typeof editForm }) =>
       adminApi.updateCalendar(id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['calendars'] });
-      toast.success('Calendar entry updated');
+      qc.invalidateQueries({ queryKey: ["calendars"] });
+      toast.success("Calendar entry updated");
       setEditingId(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to update'),
+    onError: (e: any) =>
+      toast.error(e.response?.data?.detail || "Failed to update"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => adminApi.deleteCalendar(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['calendars'] });
-      toast.success('Calendar entry deleted');
+      qc.invalidateQueries({ queryKey: ["calendars"] });
+      toast.success("Calendar entry deleted");
       setEditingId(null);
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to delete'),
+    onError: (e: any) =>
+      toast.error(e.response?.data?.detail || "Failed to delete"),
   });
 
   const beginEdit = (cal: {
@@ -450,79 +539,103 @@ function CalendarAdmin() {
   }) => {
     setEditingId(cal.id);
     setEditForm({
-      school_resume_date: cal.school_resume_date || '',
-      lectures_start_date: cal.lectures_start_date || '',
-      semester_end_date: cal.semester_end_date || '',
+      school_resume_date: cal.school_resume_date || "",
+      lectures_start_date: cal.lectures_start_date || "",
+      semester_end_date: cal.semester_end_date || "",
     });
   };
 
   return (
     <div className="space-y-5">
       <div className="card p-5">
-        <h3 className="text-cream-200/70 text-sm font-semibold mb-4">Add Academic Calendar Entry</h3>
+        <h3 className="text-cream-200/70 text-sm font-semibold mb-4">
+          Add Academic Calendar Entry
+        </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <select
             value={form.level}
-            onChange={e => setForm(f => ({ ...f, level: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, level: e.target.value }))}
             className="input-field"
           >
-            {['100L', '200L', '300L', '400L'].map(l => <option key={l}>{l}</option>)}
+            {["100L", "200L", "300L", "400L"].map((l) => (
+              <option key={l}>{l}</option>
+            ))}
           </select>
           <select
             value={form.semester}
-            onChange={e => setForm(f => ({ ...f, semester: Number(e.target.value) }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, semester: Number(e.target.value) }))
+            }
             className="input-field"
           >
             <option value={1}>Semester 1</option>
             <option value={2}>Semester 2</option>
           </select>
           <div className="col-span-2 sm:col-span-1">
-            <label className="block text-cream-200/40 text-xs mb-1">School Resumes</label>
+            <label className="block text-cream-200/40 text-xs mb-1">
+              School Resumes
+            </label>
             <input
               type="date"
               value={form.school_resume_date}
-              onChange={e => setForm(f => ({ ...f, school_resume_date: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, school_resume_date: e.target.value }))
+              }
               className="input-field"
             />
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <label className="block text-cream-200/40 text-xs mb-1">Lectures Start</label>
+            <label className="block text-cream-200/40 text-xs mb-1">
+              Lectures Start
+            </label>
             <input
               type="date"
               value={form.lectures_start_date}
-              onChange={e => setForm(f => ({ ...f, lectures_start_date: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, lectures_start_date: e.target.value }))
+              }
               className="input-field"
             />
           </div>
           <div className="col-span-2 sm:col-span-1">
-            <label className="block text-cream-200/40 text-xs mb-1">Semester End (optional)</label>
+            <label className="block text-cream-200/40 text-xs mb-1">
+              Semester End (optional)
+            </label>
             <input
               type="date"
               value={form.semester_end_date}
-              onChange={e => setForm(f => ({ ...f, semester_end_date: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, semester_end_date: e.target.value }))
+              }
               className="input-field"
             />
           </div>
         </div>
         <button
           onClick={() => addMutation.mutate()}
-          disabled={!form.school_resume_date || !form.lectures_start_date || addMutation.isPending}
+          disabled={
+            !form.school_resume_date ||
+            !form.lectures_start_date ||
+            addMutation.isPending
+          }
           className="btn-primary text-sm flex items-center gap-2"
         >
           <Plus size={14} />
-          {addMutation.isPending ? 'Saving...' : 'Add Calendar'}
+          {addMutation.isPending ? "Saving..." : "Add Calendar"}
         </button>
       </div>
 
       <div className="space-y-3">
-        {calendars?.map(cal => (
+        {calendars?.map((cal) => (
           <div key={cal.id} className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="badge border border-cream-200/15 text-cream-200/60 text-xs">
                   {cal.level}
                 </span>
-                <span className="text-cream-200/45 text-xs">Semester {cal.semester}</span>
+                <span className="text-cream-200/45 text-xs">
+                  Semester {cal.semester}
+                </span>
                 {cal.is_active && (
                   <span className="badge bg-accent-sage/15 border border-accent-sage/25 text-accent-sage text-[10px]">
                     Active
@@ -539,16 +652,18 @@ function CalendarAdmin() {
                       <X size={12} /> Cancel
                     </button>
                     <button
-                      onClick={() => updateMutation.mutate({ id: cal.id, data: editForm })}
+                      onClick={() =>
+                        updateMutation.mutate({ id: cal.id, data: editForm })
+                      }
                       disabled={
-                        !editForm.school_resume_date
-                        || !editForm.lectures_start_date
-                        || updateMutation.isPending
+                        !editForm.school_resume_date ||
+                        !editForm.lectures_start_date ||
+                        updateMutation.isPending
                       }
                       className="btn-primary text-xs px-2 py-1 inline-flex items-center gap-1"
                     >
                       <Save size={12} />
-                      {updateMutation.isPending ? 'Saving...' : 'Save'}
+                      {updateMutation.isPending ? "Saving..." : "Save"}
                     </button>
                   </>
                 ) : (
@@ -565,7 +680,7 @@ function CalendarAdmin() {
                       className="btn-ghost text-xs px-2 py-1 inline-flex items-center gap-1 text-rose-300 hover:text-rose-200"
                     >
                       <Trash2 size={12} />
-                      {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                      {deleteMutation.isPending ? "Deleting..." : "Delete"}
                     </button>
                   </>
                 )}
@@ -575,29 +690,50 @@ function CalendarAdmin() {
               {editingId === cal.id ? (
                 <>
                   <div>
-                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">Resumed</div>
+                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                      Resumed
+                    </div>
                     <input
                       type="date"
                       value={editForm.school_resume_date}
-                      onChange={e => setEditForm(f => ({ ...f, school_resume_date: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          school_resume_date: e.target.value,
+                        }))
+                      }
                       className="input-field text-xs"
                     />
                   </div>
                   <div>
-                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">Lectures</div>
+                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                      Lectures
+                    </div>
                     <input
                       type="date"
                       value={editForm.lectures_start_date}
-                      onChange={e => setEditForm(f => ({ ...f, lectures_start_date: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          lectures_start_date: e.target.value,
+                        }))
+                      }
                       className="input-field text-xs"
                     />
                   </div>
                   <div>
-                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">Ends</div>
+                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                      Ends
+                    </div>
                     <input
                       type="date"
                       value={editForm.semester_end_date}
-                      onChange={e => setEditForm(f => ({ ...f, semester_end_date: e.target.value }))}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          semester_end_date: e.target.value,
+                        }))
+                      }
                       className="input-field text-xs"
                     />
                   </div>
@@ -605,14 +741,16 @@ function CalendarAdmin() {
               ) : (
                 <>
                   {[
-                    { label: 'Resumed', val: cal.school_resume_date },
-                    { label: 'Lectures', val: cal.lectures_start_date },
-                    { label: 'Ends', val: cal.semester_end_date },
+                    { label: "Resumed", val: cal.school_resume_date },
+                    { label: "Lectures", val: cal.lectures_start_date },
+                    { label: "Ends", val: cal.semester_end_date },
                   ].map(({ label, val }) => (
                     <div key={label}>
-                      <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-0.5">{label}</div>
+                      <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-0.5">
+                        {label}
+                      </div>
                       <div className="text-cream-200/70 text-xs font-medium">
-                        {val ? format(parseISO(val), 'MMM d, yyyy') : '—'}
+                        {val ? format(parseISO(val), "MMM d, yyyy") : "—"}
                       </div>
                     </div>
                   ))}
@@ -623,7 +761,9 @@ function CalendarAdmin() {
         ))}
         {(!calendars || calendars.length === 0) && (
           <div className="card p-8 text-center">
-            <p className="text-cream-200/30 text-sm">No calendar entries yet.</p>
+            <p className="text-cream-200/30 text-sm">
+              No calendar entries yet.
+            </p>
           </div>
         )}
       </div>
@@ -631,26 +771,47 @@ function CalendarAdmin() {
   );
 }
 
-
 /* ─── Question Flags ───────────────────────────────────────────────────────── */
 function QuestionFlagsAdmin() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState<'open' | 'resolved' | 'all'>('open');
+  const [showResolveAllModal, setShowResolveAllModal] = useState(false);
+  const [status, setStatus] = useState<"open" | "resolved" | "all">("open");
 
   const { data: flags, isLoading } = useQuery({
-    queryKey: ['question-flags', status],
-    queryFn: () => adminApi.getQuestionFlags(status).then(r => r.data),
+    queryKey: ["question-flags", status],
+    queryFn: () => adminApi.getQuestionFlags(status).then((r) => r.data),
   });
 
   const resolveMutation = useMutation({
-    mutationFn: ({ questionId, deactivate }: { questionId: string; deactivate: boolean }) =>
-      adminApi.resolveQuestionFlags(questionId, deactivate),
+    mutationFn: ({
+      questionId,
+      deactivate,
+    }: {
+      questionId: string;
+      deactivate: boolean;
+    }) => adminApi.resolveQuestionFlags(questionId, deactivate),
     onSuccess: (_, variables) => {
-      qc.invalidateQueries({ queryKey: ['question-flags'] });
-      toast.success(variables.deactivate ? 'Question disabled and flags resolved' : 'Flags resolved');
+      qc.invalidateQueries({ queryKey: ["question-flags"] });
+      toast.success(
+        variables.deactivate
+          ? "Question disabled and flags resolved"
+          : "Flags resolved",
+      );
     },
-    onError: () => toast.error('Failed to update flagged question'),
+    onError: () => toast.error("Failed to update flagged question"),
   });
+
+  const resolveAllMutation = useMutation({
+    mutationFn: () => adminApi.resolveAllQuestionFlags(true),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["question-flags"] });
+      toast.success("All open flagged questions disabled and resolved");
+    },
+    onError: () => toast.error("Failed to disable all flagged questions"),
+  });
+
+  const openActiveFlagsCount =
+    flags?.filter((f) => f.status === "open" && f.is_active).length ?? 0;
 
   function resolve(flag: QuestionFlag, deactivate: boolean) {
     resolveMutation.mutate({ questionId: flag.question_id, deactivate });
@@ -664,57 +825,148 @@ function QuestionFlagsAdmin() {
             Flagged Questions ({flags?.length ?? 0})
           </h3>
           <p className="text-cream-200/35 text-xs mt-1">
-            Review reported questions, resolve false alarms, or disable bad questions from future feeds.
+            Review reported questions, resolve false alarms, or disable bad
+            questions from future feeds.
           </p>
         </div>
-        <select
-          value={status}
-          onChange={e => setStatus(e.target.value as 'open' | 'resolved' | 'all')}
-          className="input-field text-xs sm:w-40"
-        >
-          <option value="open">Open flags</option>
-          <option value="resolved">Resolved flags</option>
-          <option value="all">All flags</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <>
+            <button
+              onClick={() => {
+                if (openActiveFlagsCount === 0) return;
+                setShowResolveAllModal(true);
+              }}
+              disabled={
+                resolveAllMutation.isPending ||
+                resolveMutation.isPending ||
+                openActiveFlagsCount === 0
+              }
+              className="btn-primary text-xs px-3 py-2"
+            >
+              {resolveAllMutation.isPending
+                ? "Disabling..."
+                : `Disable all questions (${openActiveFlagsCount})`}
+            </button>
+            <AnimatePresence>
+              {showResolveAllModal && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/60 z-40"
+                    onClick={() => setShowResolveAllModal(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 16 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                  >
+                    <div className="w-full max-w-md card p-5">
+                      <h4 className="font-display text-lg text-cream-200 mb-2">
+                        Disable all flagged questions?
+                      </h4>
+                      <p className="text-cream-200/55 text-sm">
+                        This will disable and resolve {openActiveFlagsCount}{" "}
+                        open flagged question
+                        {openActiveFlagsCount === 1 ? "" : "s"}. This cannot be
+                        undone.
+                      </p>
+                      <div className="flex justify-end gap-2 mt-5">
+                        <button
+                          className="btn-ghost text-sm"
+                          onClick={() => setShowResolveAllModal(false)}
+                          disabled={resolveAllMutation.isPending}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn-primary text-sm"
+                          onClick={() => {
+                            setShowResolveAllModal(false);
+                            resolveAllMutation.mutate();
+                          }}
+                          disabled={resolveAllMutation.isPending}
+                        >
+                          {resolveAllMutation.isPending
+                            ? "Disabling..."
+                            : "Disable all"}
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </>
+          <select
+            value={status}
+            onChange={(e) =>
+              setStatus(e.target.value as "open" | "resolved" | "all")
+            }
+            className="input-field text-xs sm:w-40"
+          >
+            <option value="open">Open flags</option>
+            <option value="resolved">Resolved flags</option>
+            <option value="all">All flags</option>
+          </select>
+        </div>
       </div>
 
       <div className="space-y-3">
-        {flags?.map(flag => (
+        {flags?.map((flag) => (
           <div key={flag.question_id} className="card p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
                   <span className="badge border border-accent-coral/25 bg-accent-coral/12 text-accent-coral text-[10px]">
-                    {flag.flag_count} {flag.flag_count === 1 ? 'flag' : 'flags'}
+                    {flag.flag_count} {flag.flag_count === 1 ? "flag" : "flags"}
                   </span>
                   <span className="badge border border-cream-200/12 text-cream-200/55 text-[10px]">
-                    {flag.course_code} {flag.week_number ? `· Week ${flag.week_number}` : ''}
+                    {flag.course_code}{" "}
+                    {flag.week_number ? `· Week ${flag.week_number}` : ""}
                   </span>
-                  <span className={clsx(
-                    'badge border text-[10px]',
-                    flag.is_active
-                      ? 'border-accent-sage/25 bg-accent-sage/12 text-accent-sage'
-                      : 'border-cream-200/10 bg-cream-200/5 text-cream-200/35'
-                  )}>
-                    {flag.is_active ? 'Active' : 'Disabled'}
+                  <span
+                    className={clsx(
+                      "badge border text-[10px]",
+                      flag.is_active
+                        ? "border-accent-sage/25 bg-accent-sage/12 text-accent-sage"
+                        : "border-cream-200/10 bg-cream-200/5 text-cream-200/35",
+                    )}
+                  >
+                    {flag.is_active ? "Active" : "Disabled"}
                   </span>
                 </div>
-                <p className="text-cream-200/85 text-sm leading-relaxed">{flag.question_text}</p>
+                <p className="text-cream-200/85 text-sm leading-relaxed">
+                  {flag.question_text}
+                </p>
                 {flag.reasons.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {flag.reasons.slice(0, 5).map(reason => (
-                      <span key={reason} className="rounded-lg bg-cream-200/6 px-2 py-1 text-[11px] text-cream-200/55">
+                    {flag.reasons.slice(0, 5).map((reason) => (
+                      <span
+                        key={reason}
+                        className="rounded-lg bg-cream-200/6 px-2 py-1 text-[11px] text-cream-200/55"
+                      >
                         {reason}
                       </span>
                     ))}
                   </div>
                 )}
                 <div className="mt-3 text-cream-200/30 text-[11px]">
-                  Latest: {flag.latest_flagged_at ? format(parseISO(flag.latest_flagged_at), 'MMM d, yyyy h:mm a') : '—'}
-                  {flag.reporters.length > 0 ? ` · ${flag.reporters.length} reporter${flag.reporters.length === 1 ? '' : 's'}` : ''}
+                  Latest:{" "}
+                  {flag.latest_flagged_at
+                    ? format(
+                        parseISO(flag.latest_flagged_at),
+                        "MMM d, yyyy h:mm a",
+                      )
+                    : "—"}
+                  {flag.reporters.length > 0
+                    ? ` · ${flag.reporters.length} reporter${flag.reporters.length === 1 ? "" : "s"}`
+                    : ""}
                 </div>
               </div>
-              {flag.status === 'open' && (
+              {flag.status === "open" && (
                 <div className="flex shrink-0 gap-2">
                   <button
                     onClick={() => resolve(flag, false)}
@@ -737,12 +989,16 @@ function QuestionFlagsAdmin() {
         ))}
         {!isLoading && (!flags || flags.length === 0) && (
           <div className="card p-8 text-center">
-            <p className="text-cream-200/30 text-sm">No {status === 'all' ? '' : status} question flags found.</p>
+            <p className="text-cream-200/30 text-sm">
+              No {status === "all" ? "" : status} question flags found.
+            </p>
           </div>
         )}
         {isLoading && (
           <div className="card p-8 text-center">
-            <p className="text-cream-200/30 text-sm">Loading flagged questions...</p>
+            <p className="text-cream-200/30 text-sm">
+              Loading flagged questions...
+            </p>
           </div>
         )}
       </div>
@@ -755,49 +1011,60 @@ function UsersAdmin() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newUser, setNewUser] = useState({
-    email: '', full_name: '', role: 'student', level: '100L', semester: 1,
+    email: "",
+    full_name: "",
+    role: "student",
+    level: "100L",
+    semester: 1,
   });
   const [editingRole, setEditingRole] = useState<string | null>(null);
-  const [selectedRole, setSelectedRole] = useState('student');
+  const [selectedRole, setSelectedRole] = useState("student");
 
   const { data: users } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => adminApi.listUsers().then(r => r.data),
+    queryKey: ["admin-users"],
+    queryFn: () => adminApi.listUsers().then((r) => r.data),
   });
 
   const createMutation = useMutation({
     mutationFn: () => adminApi.createUser(newUser),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User created');
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success("User created");
       setShowCreate(false);
-      setNewUser({ email: '', full_name: '', role: 'student', level: '100L', semester: 1 });
+      setNewUser({
+        email: "",
+        full_name: "",
+        role: "student",
+        level: "100L",
+        semester: 1,
+      });
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to create user'),
+    onError: (e: any) =>
+      toast.error(e.response?.data?.detail || "Failed to create user"),
   });
 
   const roleMutation = useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) =>
       adminApi.updateUserRole(id, role),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
       setEditingRole(null);
-      toast.success('Role updated');
+      toast.success("Role updated");
     },
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => adminApi.deactivateUser(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
-      toast.success('User deactivated');
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success("User deactivated");
     },
   });
 
   const ROLE_BADGE: Record<string, string> = {
-    superadmin: 'bg-accent-gold/15 text-accent-gold border-accent-gold/25',
-    admin:      'bg-accent-sky/15 text-accent-sky border-accent-sky/25',
-    student:    'bg-cream-200/8 text-cream-200/50 border-cream-200/10',
+    superadmin: "bg-accent-gold/15 text-accent-gold border-accent-gold/25",
+    admin: "bg-accent-sky/15 text-accent-sky border-accent-sky/25",
+    student: "bg-cream-200/8 text-cream-200/50 border-cream-200/10",
   };
 
   return (
@@ -818,7 +1085,7 @@ function UsersAdmin() {
         {showCreate && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
@@ -831,18 +1098,24 @@ function UsersAdmin() {
                   placeholder="Email address"
                   type="email"
                   value={newUser.email}
-                  onChange={e => setNewUser(u => ({ ...u, email: e.target.value }))}
+                  onChange={(e) =>
+                    setNewUser((u) => ({ ...u, email: e.target.value }))
+                  }
                   className="input-field col-span-2 sm:col-span-1"
                 />
                 <input
                   placeholder="Full name (optional)"
                   value={newUser.full_name}
-                  onChange={e => setNewUser(u => ({ ...u, full_name: e.target.value }))}
+                  onChange={(e) =>
+                    setNewUser((u) => ({ ...u, full_name: e.target.value }))
+                  }
                   className="input-field"
                 />
                 <select
                   value={newUser.role}
-                  onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}
+                  onChange={(e) =>
+                    setNewUser((u) => ({ ...u, role: e.target.value }))
+                  }
                   className="input-field"
                 >
                   <option value="student">Student</option>
@@ -851,14 +1124,23 @@ function UsersAdmin() {
                 </select>
                 <select
                   value={newUser.level}
-                  onChange={e => setNewUser(u => ({ ...u, level: e.target.value }))}
+                  onChange={(e) =>
+                    setNewUser((u) => ({ ...u, level: e.target.value }))
+                  }
                   className="input-field"
                 >
-                  {['100L', '200L', '300L', '400L'].map(l => <option key={l}>{l}</option>)}
+                  {["100L", "200L", "300L", "400L"].map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
                 </select>
                 <select
                   value={newUser.semester}
-                  onChange={e => setNewUser(u => ({ ...u, semester: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setNewUser((u) => ({
+                      ...u,
+                      semester: Number(e.target.value),
+                    }))
+                  }
                   className="input-field"
                 >
                   <option value={1}>Semester 1</option>
@@ -871,9 +1153,12 @@ function UsersAdmin() {
                   disabled={!newUser.email || createMutation.isPending}
                   className="btn-primary text-sm"
                 >
-                  {createMutation.isPending ? 'Creating...' : 'Create User'}
+                  {createMutation.isPending ? "Creating..." : "Create User"}
                 </button>
-                <button onClick={() => setShowCreate(false)} className="btn-ghost text-sm">
+                <button
+                  onClick={() => setShowCreate(false)}
+                  className="btn-ghost text-sm"
+                >
                   Cancel
                 </button>
               </div>
@@ -884,19 +1169,22 @@ function UsersAdmin() {
 
       {/* User list */}
       <div className="card overflow-hidden divide-y divide-cream-200/6">
-        {users?.map(u => (
+        {users?.map((u) => (
           <div key={u.id} className="flex items-center gap-4 px-4 py-3">
             <div className="w-9 h-9 rounded-xl bg-cream-200/8 flex items-center justify-center shrink-0">
-              {u.role === 'superadmin'
-                ? <Shield size={15} className="text-accent-gold/70" />
-                : <GraduationCap size={15} className="text-cream-200/40" />
-              }
+              {u.role === "superadmin" ? (
+                <Shield size={15} className="text-accent-gold/70" />
+              ) : (
+                <GraduationCap size={15} className="text-cream-200/40" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-cream-200/85 text-sm font-medium truncate">
                 {u.full_name || u.email}
               </div>
-              <div className="text-cream-200/35 text-xs mt-0.5 truncate">{u.email}</div>
+              <div className="text-cream-200/35 text-xs mt-0.5 truncate">
+                {u.email}
+              </div>
               <div className="text-cream-200/25 text-[10px]">
                 {u.level} · Sem {u.semester}
               </div>
@@ -906,7 +1194,7 @@ function UsersAdmin() {
                 <div className="flex items-center gap-2">
                   <select
                     value={selectedRole}
-                    onChange={e => setSelectedRole(e.target.value)}
+                    onChange={(e) => setSelectedRole(e.target.value)}
                     className="input-field py-1.5 text-xs"
                   >
                     <option value="student">Student</option>
@@ -914,7 +1202,9 @@ function UsersAdmin() {
                     <option value="superadmin">SuperAdmin</option>
                   </select>
                   <button
-                    onClick={() => roleMutation.mutate({ id: u.id, role: selectedRole })}
+                    onClick={() =>
+                      roleMutation.mutate({ id: u.id, role: selectedRole })
+                    }
                     className="p-1.5 rounded-lg bg-cream-200/10 text-cream-200/70 hover:bg-cream-200/20"
                   >
                     <Save size={12} />
@@ -928,11 +1218,19 @@ function UsersAdmin() {
                 </div>
               ) : (
                 <>
-                  <span className={clsx('badge border text-[10px]', ROLE_BADGE[u.role] || ROLE_BADGE.student)}>
+                  <span
+                    className={clsx(
+                      "badge border text-[10px]",
+                      ROLE_BADGE[u.role] || ROLE_BADGE.student,
+                    )}
+                  >
                     {u.role}
                   </span>
                   <button
-                    onClick={() => { setEditingRole(u.id); setSelectedRole(u.role); }}
+                    onClick={() => {
+                      setEditingRole(u.id);
+                      setSelectedRole(u.role);
+                    }}
                     className="p-1.5 rounded-lg text-cream-200/20 hover:text-cream-200/60 hover:bg-cream-200/8 transition-colors"
                   >
                     <Edit2 size={12} />
@@ -951,7 +1249,9 @@ function UsersAdmin() {
           </div>
         ))}
         {(!users || users.length === 0) && (
-          <div className="p-8 text-center text-cream-200/30 text-sm">No users found.</div>
+          <div className="p-8 text-center text-cream-200/30 text-sm">
+            No users found.
+          </div>
         )}
       </div>
     </div>

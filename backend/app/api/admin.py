@@ -318,6 +318,62 @@ async def resolve_question_flags(
     }
 
 
+@router.patch("/question-flags/resolve-all")
+async def resolve_all_question_flags(
+    body: FlagResolveIn,
+    admin: dict = Depends(get_admin_user),
+):
+    now = datetime.utcnow()
+    open_qids = await question_flags_col().distinct("question_id", {"status": "open"})
+    valid_qids = [qid for qid in open_qids if isinstance(qid, str) and ObjectId.is_valid(qid)]
+
+    if not valid_qids:
+        return {
+            "ok": True,
+            "resolved_count": 0,
+            "questions_touched": 0,
+            "deactivated_count": 0,
+            "deactivated": body.deactivate_question,
+        }
+
+    result = await question_flags_col().update_many(
+        {"status": "open", "question_id": {"$in": valid_qids}},
+        {"$set": {"status": "resolved", "resolved_at": now, "resolved_by": admin["id"], "updated_at": now}},
+    )
+
+    deactivated_count = 0
+    if body.deactivate_question:
+        question_oids = [ObjectId(qid) for qid in valid_qids]
+        q_result = await questions_col().update_many(
+            {"_id": {"$in": question_oids}, "is_active": True},
+            {"$set": {"is_active": False, "updated_at": now}},
+        )
+        deactivated_count = q_result.modified_count
+
+    await model_feedback_col().update_many(
+        {"question_id": {"$in": valid_qids}, "status": {"$ne": "archived"}},
+        {"$set": {
+            "status": "resolved",
+            "resolved_at": now,
+            "resolved_by": admin["id"],
+            "deactivated": body.deactivate_question,
+            "resolution_note": (
+                "Question was disabled after admin review." if body.deactivate_question
+                else "Question was reviewed and kept active."
+            ),
+            "updated_at": now,
+        }},
+    )
+
+    return {
+        "ok": True,
+        "resolved_count": result.modified_count,
+        "questions_touched": len(valid_qids),
+        "deactivated_count": deactivated_count,
+        "deactivated": body.deactivate_question,
+    }
+
+
 @router.get("/model-feedback")
 async def list_model_feedback(status: str = "pending", admin: dict = Depends(get_admin_user)):
     filt = {"status": status} if status != "all" else {}

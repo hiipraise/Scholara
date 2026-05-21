@@ -65,6 +65,7 @@ export const coursesApi = {
     semester: number;
     credit_units?: number;
   }) => apiClient.post("/courses/", data),
+  deleteCourse: (courseId: string) => apiClient.delete(`/courses/${courseId}`),
   getPdfs: (courseId: string) =>
     apiClient.get<CoursePDF[]>(`/courses/${courseId}/pdfs`),
   uploadPdf: (
@@ -140,13 +141,20 @@ export const adminApi = {
     apiClient.patch(`/admin/question-flags/${questionId}/resolve`, {
       deactivate_question,
     }),
+  resolveAllQuestionFlags: (deactivate_question = true) =>
+    apiClient.patch(`/admin/question-flags/resolve-all`, {
+      deactivate_question,
+    }),
 };
 
 // Users
 export const usersApi = {
   getProfile: () => apiClient.get<User>("/users/me"),
-  updateProfile: (data: { full_name?: string }) =>
-    apiClient.put("/users/me", data),
+  updateProfile: (data: {
+    full_name?: string;
+    level?: string;
+    semester?: number;
+  }) => apiClient.put("/users/me", data),
 };
 
 // Questions

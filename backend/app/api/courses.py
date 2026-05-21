@@ -75,6 +75,35 @@ async def create_course(body: CourseCreate, admin: dict = Depends(get_admin_user
     return {"id": str(result.inserted_id), "code": doc["code"], "title": doc["title"]}
 
 
+@router.delete("/{course_id}")
+async def delete_course(course_id: str, admin: dict = Depends(get_admin_user)):
+    try:
+        oid = ObjectId(course_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid course id")
+
+    course = await courses_col().find_one({"_id": oid, "is_active": True})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    await courses_col().update_one({"_id": oid}, {"$set": {"is_active": False}})
+    await pdfs_col().update_many(
+        {"course_id": course_id, "is_deleted": {"$ne": True}},
+        {"$set": {"is_deleted": True}},
+    )
+    await questions_col().update_many(
+        {"course_id": course_id, "is_active": True},
+        {"$set": {"is_active": False}},
+    )
+
+    try:
+        await refresh_study_cycle_for_term(course["level"], course["semester"])
+    except Exception:
+        pass
+
+    return {"message": "Course deleted"}
+
+
 @router.get("/{course_id}/pdfs")
 async def list_pdfs(course_id: str, current_user: dict = Depends(get_current_user)):
     docs = (
