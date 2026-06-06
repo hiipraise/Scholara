@@ -57,6 +57,8 @@ export interface DailyFeed {
   completed_count: number;
   is_fully_completed: boolean;
   progress_pct: number;
+  batch_number?: number;
+  can_refresh?: boolean;
 }
 
 export interface AnswerResult {
@@ -64,6 +66,9 @@ export interface AnswerResult {
   correct_answer: string;
   explanation: string;
   question_id: string;
+  feed_completed?: boolean;
+  completed_count?: number;
+  total?: number;
 }
 
 export interface CoursePDF {

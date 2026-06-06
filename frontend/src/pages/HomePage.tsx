@@ -165,6 +165,25 @@ export default function HomePage() {
     },
   });
 
+  const refreshFeedMutation = useMutation({
+    mutationFn: () => feedApi.refreshToday(),
+    onSuccess: ({ data }) => {
+      qc.setQueryData(["feed", "today"], data);
+      qc.invalidateQueries({ queryKey: ["feed", "stats"] });
+      qc.invalidateQueries({ queryKey: ["feed", "history"] });
+      setCustomFeed(null);
+      setPracticeResults({});
+      setFilterDone("all");
+      setShowFeedCompleteModal(false);
+      setShowPracticeResultModal(false);
+      toast.success(`Loaded ${data.total || 60} fresh questions`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    onError: () => {
+      toast.error("Could not load a fresh feed. Please try again.");
+    },
+  });
+
   const customTotal = customFeed?.questions?.length ?? 0;
   const customDone =
     customFeed?.questions?.filter((q: Question) => q.is_completed).length ?? 0;
@@ -780,9 +799,24 @@ export default function HomePage() {
               <h3 className="font-display text-xl text-cream-200 mb-2">
                 Feed Complete
               </h3>
-              <p className="text-cream-200/45 text-sm">
-                All 60 questions done today. Fresh questions arrive tomorrow.
+              <p className="text-cream-200/45 text-sm mb-4">
+                All {feed?.total ?? 60} questions in this batch are done. Load
+                another fresh batch when you are ready.
               </p>
+              <button
+                type="button"
+                onClick={() => refreshFeedMutation.mutate()}
+                disabled={refreshFeedMutation.isPending}
+                className="btn-primary text-sm inline-flex items-center gap-2"
+              >
+                <RefreshCw
+                  size={14}
+                  className={clsx(
+                    refreshFeedMutation.isPending && "animate-spin",
+                  )}
+                />
+                {refreshFeedMutation.isPending ? "Loading..." : "Load Fresh 60"}
+              </button>
             </>
           ) : (
             <>
@@ -825,6 +859,30 @@ export default function HomePage() {
                       ),
                     };
                   });
+                }
+                if (!customFeed) {
+                  qc.setQueryData(["feed", "today"], (prev: any) => {
+                    if (!prev) return prev;
+                    const completedCount =
+                      result.completed_count ?? prev.completed_count;
+                    const total = result.total || prev.total;
+                    return {
+                      ...prev,
+                      completed_count: completedCount,
+                      is_fully_completed:
+                        result.feed_completed ?? prev.is_fully_completed,
+                      progress_pct: total
+                        ? Math.round((completedCount / total) * 1000) / 10
+                        : prev.progress_pct,
+                      questions: prev.questions.map((pq: Question) =>
+                        pq.id === q.id ? { ...pq, is_completed: true } : pq,
+                      ),
+                    };
+                  });
+                }
+                if (!customFeed && result.feed_completed) {
+                  setFeedModalMode("complete");
+                  setShowFeedCompleteModal(true);
                 }
                 // Refresh both the feed (progress bar / completed_count) and stats
                 qc.invalidateQueries({ queryKey: ["feed", "today"] });
@@ -957,7 +1015,7 @@ export default function HomePage() {
                 </h3>
                 <p className="text-cream-200/55 text-sm mb-4">
                   {feedModalMode === "complete"
-                    ? "You've completed today's feed. Great work — consider reviewing flagged items or starting focused practice."
+                    ? "You've completed this 60-question batch. Great work — load a fresh set now or switch to focused practice."
                     : "You have no active questions left in view because some were flagged. You can show flagged questions again to continue this session."}
                 </p>
                 <div className="grid grid-cols-3 gap-2 mb-5">
@@ -1003,13 +1061,14 @@ export default function HomePage() {
                         setHiddenQuestionIds([]);
                         return;
                       }
-                      setCustomFeed(null);
-                      setPracticeResults({});
-                      setShowPracticeResultModal(false);
+                      refreshFeedMutation.mutate();
                     }}
+                    disabled={refreshFeedMutation.isPending}
                   >
                     {feedModalMode === "complete"
-                      ? "Start Focused Practice"
+                      ? refreshFeedMutation.isPending
+                        ? "Loading Fresh Feed..."
+                        : "Load Fresh 60"
                       : "Show Flagged Questions"}
                   </button>
                 </div>

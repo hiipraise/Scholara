@@ -24,6 +24,7 @@ import type {
 // Feed
 export const feedApi = {
   getToday: () => apiClient.get<DailyFeed>("/feed/today"),
+  refreshToday: () => apiClient.post<DailyFeed>("/feed/refresh"),
   submitAnswer: (question_id: string, selected_answer: string) =>
     apiClient.post<AnswerResult>("/feed/answer", {
       question_id,
