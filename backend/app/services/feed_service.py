@@ -222,7 +222,7 @@ async def get_or_create_daily_feed(user: dict) -> dict:
     if not existing:
         existing = await col.find_one({"user_id": user_id, "feed_date": today_str})
 
-    if existing and not existing.get("is_fully_completed"):
+    if existing:
         if existing.get("level") != level or existing.get("semester") != semester:
             await col.update_one(
                 {"_id": existing["_id"]},
@@ -232,6 +232,7 @@ async def get_or_create_daily_feed(user: dict) -> dict:
                     "question_ids": [],
                     "completed_ids": [],
                     "is_fully_completed": False,
+                    "batch_number": 1,
                 }},
             )
             existing["level"] = level
@@ -239,6 +240,7 @@ async def get_or_create_daily_feed(user: dict) -> dict:
             existing["question_ids"] = []
             existing["completed_ids"] = []
             existing["is_fully_completed"] = False
+            existing["batch_number"] = 1
         return await _feed_response(existing, user_id)
 
     # Carry-over: if yesterday's feed was incomplete, keep unanswered questions
@@ -259,35 +261,18 @@ async def get_or_create_daily_feed(user: dict) -> dict:
     new_ids = await _build_question_ids(user, exclude=carry, target=max(0, FEED_SIZE - len(carry)))
     question_ids = carry + new_ids
 
-    if existing:
-        await col.update_one(
-            {"_id": existing["_id"]},
-            {"$set": {
-                "level": level,
-                "semester": semester,
-                "question_ids": question_ids,
-                "completed_ids": [],
-                "is_fully_completed": False,
-            }},
-        )
-        existing["level"] = level
-        existing["semester"] = semester
-        existing["question_ids"]   = question_ids
-        existing["completed_ids"]  = []
-        existing["is_fully_completed"] = False
-        feed = existing
-    else:
-        doc = {
-            "user_id": user_id,
-            "feed_date": today_str,
-            "level": level,
-            "semester": semester,
-            "question_ids": question_ids,
-            "completed_ids": [],
-            "is_fully_completed": False,
-        }
-        result = await col.insert_one(doc)
-        feed = await col.find_one({"_id": result.inserted_id})
+    doc = {
+        "user_id": user_id,
+        "feed_date": today_str,
+        "level": level,
+        "semester": semester,
+        "question_ids": question_ids,
+        "completed_ids": [],
+        "is_fully_completed": False,
+        "batch_number": 1,
+    }
+    result = await col.insert_one(doc)
+    feed = await col.find_one({"_id": result.inserted_id})
 
     return await _feed_response(feed, user_id)
 
@@ -334,10 +319,56 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
         "feed_date": feed["feed_date"],
         "questions": questions,
         "total": total,
-        "completed_count": done_count,
+        "completed_count": min(done_count, total),
         "is_fully_completed": feed.get("is_fully_completed", False),
-        "progress_pct": round(done_count / total * 100, 1) if total else 0,
+        "progress_pct": round(min(done_count, total) / total * 100, 1) if total else 0,
+        "batch_number": feed.get("batch_number", 1),
+        "can_refresh": feed.get("is_fully_completed", False),
     }
+
+
+async def refresh_daily_feed(user: dict) -> dict:
+    """Replace a completed daily feed with the next 60-question batch on demand."""
+    today_str = date.today().isoformat()
+    user_id = user["id"]
+    level = user["level"]
+    semester = user["semester"]
+    col = feeds_col()
+
+    existing = await col.find_one({"user_id": user_id, "feed_date": today_str})
+    if existing and not existing.get("is_fully_completed"):
+        return await _feed_response(existing, user_id)
+
+    exclude = existing.get("question_ids", []) if existing else []
+    question_ids = await _build_question_ids(user, exclude=exclude, target=FEED_SIZE)
+    if len(question_ids) < FEED_SIZE:
+        # If the available bank cannot provide 60 unseen questions, backfill from the
+        # same unlocked pool so the next-batch action still keeps the feed usable.
+        backfill = await _build_question_ids(
+            user,
+            exclude=question_ids,
+            target=FEED_SIZE - len(question_ids),
+        )
+        question_ids.extend(backfill)
+    doc_updates = {
+        "level": level,
+        "semester": semester,
+        "question_ids": question_ids,
+        "completed_ids": [],
+        "is_fully_completed": False,
+        "batch_number": (existing or {}).get("batch_number", 0) + 1,
+    }
+
+    if existing:
+        await col.update_one({"_id": existing["_id"]}, {"$set": doc_updates})
+        existing.update(doc_updates)
+        feed = existing
+    else:
+        doc = {"user_id": user_id, "feed_date": today_str, **doc_updates}
+        result = await col.insert_one(doc)
+        feed = await col.find_one({"_id": result.inserted_id})
+
+    return await _feed_response(feed, user_id)
 
 
 # ── Submit Answer ──────────────────────────────────────────────────────────
@@ -372,10 +403,20 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
                 {"_id": feed["_id"]},
                 {"$set": {"completed_ids": completed, "is_fully_completed": fully}},
             )
+        total = len(feed.get("question_ids", []))
+        completed_count = len(completed)
+        feed_completed = completed_count >= total if total else False
+    else:
+        total = 0
+        completed_count = 0
+        feed_completed = False
 
     return {
         "is_correct": is_correct,
         "correct_answer": q["correct_answer"],
         "explanation": q.get("explanation", ""),
         "question_id": question_id,
+        "feed_completed": feed_completed,
+        "completed_count": completed_count,
+        "total": total,
     }

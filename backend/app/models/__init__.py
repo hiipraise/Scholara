@@ -74,6 +74,7 @@ class DailyFeedDoc(BaseModel):
     question_ids: List[str] = []
     completed_ids: List[str] = []
     is_fully_completed: bool = False
+    batch_number: int = 1
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 # ── QuestionAttempt ────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ from bson import ObjectId
 from app.core.deps import get_current_user
 from app.core.database import progress_col, courses_col, attempts_col, questions_col, calendars_col
 from app.services.feed_service import (
-    get_or_create_daily_feed, submit_answer,
+    get_or_create_daily_feed, refresh_daily_feed, submit_answer,
     get_unlocked_week, get_active_calendar, _academic_week,
 )
 
@@ -45,6 +45,11 @@ async def _term_question_ids(level: str, semester: int) -> list[str]:
 @router.get("/today")
 async def today_feed(current_user: dict = Depends(get_current_user)):
     return await get_or_create_daily_feed(current_user)
+
+
+@router.post("/refresh")
+async def refresh_feed(current_user: dict = Depends(get_current_user)):
+    return await refresh_daily_feed(current_user)
 
 
 @router.post("/answer")
