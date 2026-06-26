@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import create_indexes, users_col
 from app.api import auth, users, courses, feed, admin, questions, intelligence
 from app.core.upload_rate_limiter import limiter
+from app.core.security_headers import SecurityHeadersMiddleware
 from slowapi import _rate_limit_exceeded_handler
 
 app = FastAPI(
@@ -22,6 +23,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.router.redirect_slashes = False
 
@@ -29,8 +31,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
 )
 
 os.makedirs("uploads", exist_ok=True)

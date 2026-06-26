@@ -2,18 +2,34 @@
 import axios from "axios";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const TOKEN_KEY = "scholara_token";
+const AUTH_PATH = "/auth";
+
+function isBrowserStorageAvailable() {
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function redirectToAuth() {
+  if (typeof window !== "undefined" && window.location.pathname !== AUTH_PATH) {
+    window.location.assign(AUTH_PATH);
+  }
+}
 
 export const apiClient = axios.create({
   baseURL: API_BASE,
+  timeout: 15000,
   headers: {
     "Content-Type": "application/json",
+    Accept: "application/json",
+    "X-Requested-With": "XMLHttpRequest",
   },
+  withCredentials: false,
 });
 
 // Token injection
 apiClient.interceptors.request.use((config) => {
   const token = getToken();
-  if (token) {
+  if (token && /^[A-Za-z0-9._~+/-]+=*$/.test(token)) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -23,9 +39,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && err.config?.url?.includes("/auth/me")) {
+    if (err.response?.status === 401) {
       clearToken();
-      window.location.href = "/auth";
+      redirectToAuth();
     }
     return Promise.reject(err);
   },
@@ -35,15 +51,20 @@ apiClient.interceptors.response.use(
 let _token: string | null = null;
 
 export function setToken(token: string) {
+  if (!token || token.length > 4096) {
+    clearToken();
+    return;
+  }
   _token = token;
   // Use sessionStorage as a fallback for page refresh (per-tab only, not localStorage)
-  sessionStorage.setItem("scholara_token", token);
+  if (isBrowserStorageAvailable()) sessionStorage.setItem(TOKEN_KEY, token);
 }
 
 export function getToken(): string | null {
   if (_token) return _token;
   // Try to recover from sessionStorage after refresh
-  const stored = sessionStorage.getItem("scholara_token");
+  if (!isBrowserStorageAvailable()) return null;
+  const stored = sessionStorage.getItem(TOKEN_KEY);
   if (stored) {
     _token = stored;
     return stored;
@@ -53,7 +74,7 @@ export function getToken(): string | null {
 
 export function clearToken() {
   _token = null;
-  sessionStorage.removeItem("scholara_token");
+  if (isBrowserStorageAvailable()) sessionStorage.removeItem(TOKEN_KEY);
 }
 
 export default apiClient;

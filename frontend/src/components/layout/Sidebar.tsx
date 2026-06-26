@@ -63,7 +63,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       {/* User info */}
       <div className="px-6 py-4 border-b border-cream-200/8">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-cream-200/10 flex items-center justify-center">
+          <div className="h-12 w-12 rounded-xl bg-cream-200/10 flex items-center justify-center">
             <GraduationCap size={16} className="text-cream-200/60" />
           </div>
           <div className="min-w-0">
@@ -87,7 +87,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             onClick={onClose}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 min-h-12 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                 isActive
                   ? 'bg-cream-200/10 text-cream-200 border border-cream-200/10'
                   : 'text-cream-200/50 hover:text-cream-200/80 hover:bg-cream-200/5'
@@ -111,7 +111,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               onClick={onClose}
               className={({ isActive }) =>
                 clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                  'flex items-center gap-3 min-h-12 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
                   isActive
                     ? 'bg-accent-gold/10 text-accent-gold border border-accent-gold/15'
                     : 'text-cream-200/50 hover:text-cream-200/80 hover:bg-cream-200/5'
@@ -129,7 +129,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       <div className="px-3 py-4 border-t border-cream-200/8">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-cream-200/40 hover:text-cream-200/70 hover:bg-cream-200/5 transition-all duration-200"
+          className="w-full flex items-center gap-3 min-h-12 px-3 py-2.5 rounded-xl text-sm font-medium text-cream-200/40 hover:text-cream-200/70 hover:bg-cream-200/5 transition-all duration-200"
         >
           <LogOut size={17} />
           Sign Out
@@ -166,7 +166,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               <div className="relative h-full">
                 <button
                   onClick={onClose}
-                  className="absolute top-4 right-4 p-1.5 rounded-lg text-cream-200/40 hover:text-cream-200/70 hover:bg-cream-200/8 z-10"
+                  className="absolute top-4 right-4 min-h-12 min-w-12 p-2 rounded-lg text-cream-200/40 hover:text-cream-200/70 hover:bg-cream-200/8 z-10"
                 >
                   <X size={18} />
                 </button>

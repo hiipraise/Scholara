@@ -1,3 +1,4 @@
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -42,6 +43,19 @@ class Settings(BaseSettings):
     # Upload
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE_MB: int = 50
+
+    @field_validator("ALLOWED_ORIGINS")
+    @classmethod
+    def validate_origins(cls, value: List[str]) -> List[str]:
+        if "*" in value:
+            raise ValueError("Wildcard CORS origins are not allowed")
+        return value
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self):
+        if self.APP_ENV.lower() == "production" and "change-in-production" in self.SECRET_KEY:
+            raise ValueError("SECRET_KEY must be overridden in production")
+        return self
 
     class Config:
         env_file = ".env"
