@@ -5,11 +5,12 @@ POST /api/auth/signin  →  { email } → creates user if new → returns JWT
 GET  /api/auth/me      →  current user profile
 PUT  /api/auth/email   →  change email (instant, no verify step)
 """
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 
 from app.core.database import users_col
+from pymongo.errors import DuplicateKeyError
 from app.core.security import create_access_token
 from app.core.config import settings
 from app.core.deps import get_current_user
@@ -18,11 +19,11 @@ router = APIRouter()
 
 
 class SignInRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(max_length=254)
 
 
 class ChangeEmailRequest(BaseModel):
-    new_email: EmailStr
+    new_email: EmailStr = Field(max_length=254)
 
 
 def _role_for(email: str) -> str:
@@ -57,8 +58,13 @@ async def sign_in(body: SignInRequest):
             "is_active": True,
             "created_at": datetime.utcnow(),
         }
-        result = await col.insert_one(doc)
-        user = await col.find_one({"_id": result.inserted_id})
+        try:
+            result = await col.insert_one(doc)
+            user = await col.find_one({"_id": result.inserted_id})
+        except DuplicateKeyError:
+            user = await col.find_one({"email": email})
+        if not user:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Sign-in temporarily unavailable")
 
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account is deactivated")
@@ -84,12 +90,17 @@ async def change_email(
     new_email = body.new_email.lower().strip()
     col = users_col()
 
-    if await col.find_one({"email": new_email}):
-        raise HTTPException(status_code=400, detail="Email already in use")
+    if new_email == current_user["email"]:
+        raise HTTPException(status_code=400, detail="New email must be different")
 
-    await col.update_one(
-        {"email": current_user["email"]},
-        {"$set": {"email": new_email, "role": _role_for(new_email)}},
-    )
+    try:
+        result = await col.update_one(
+            {"email": current_user["email"]},
+            {"$set": {"email": new_email, "role": _role_for(new_email)}},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="Email already in use") from None
+    if result.matched_count != 1:
+        raise HTTPException(status_code=404, detail="Account not found")
     new_token = create_access_token({"email": new_email, "role": _role_for(new_email)})
     return {"message": "Email updated", "access_token": new_token, "new_email": new_email}

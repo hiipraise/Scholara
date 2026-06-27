@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -10,11 +10,16 @@ export default function AuthPage() {
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) && normalizedEmail.length <= 254;
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) return;
+    const trimmed = normalizedEmail;
+    if (!isValidEmail) {
+      toast.error('Enter a valid email address.');
+      return;
+    }
     setLoading(true);
     try {
       const res = await authApi.signIn(trimmed);
@@ -70,14 +75,18 @@ export default function AuthPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
+                  maxLength={254}
+                  autoComplete="email"
+                  inputMode="email"
                   autoFocus
-                  className="w-full border border-cream-200/20 bg-indigo-950/50 px-4 py-3 text-sm text-cream-200 outline-none"
+                  aria-invalid={email.length > 0 && !isValidEmail}
+                  className="min-h-12 w-full rounded-xl border border-cream-200/20 bg-indigo-950/50 px-4 py-3 text-base text-cream-200 outline-none transition focus:border-cream-200/50 focus:ring-2 focus:ring-cream-200/20 sm:text-sm"
                 />
                 <motion.button
                   type="submit"
-                  disabled={loading || !email.trim()}
+                  disabled={loading || !isValidEmail}
                   whileTap={{ scale: 0.98 }}
-                  className="mt-2 w-full border border-cream-200/20 bg-cream-200 px-6 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-indigo-700 disabled:opacity-40"
+                  className="mt-2 min-h-12 w-full rounded-xl border border-cream-200/20 bg-cream-200 px-6 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-indigo-700 transition hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-cream-200/60 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {loading ? 'Signing in...' : 'Start with Scholara'}
                 </motion.button>
