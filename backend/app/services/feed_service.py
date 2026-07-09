@@ -315,13 +315,26 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
 
     total = len(questions)
     done_count = len(completed & set(qids))
+    correct_ids = await attempts_col().distinct(
+        "question_id",
+        {
+            "user_id": user_id,
+            "feed_date": feed["feed_date"],
+            "question_id": {"$in": qids},
+            "is_correct": True,
+        },
+    )
+    correct_count = len(set(correct_ids) & set(qids))
+    completed_count = min(done_count, total)
     return {
         "feed_date": feed["feed_date"],
         "questions": questions,
         "total": total,
-        "completed_count": min(done_count, total),
+        "completed_count": completed_count,
+        "correct_count": min(correct_count, completed_count),
+        "accuracy_pct": round(min(correct_count, completed_count) / completed_count * 100, 1) if completed_count else 0,
         "is_fully_completed": feed.get("is_fully_completed", False),
-        "progress_pct": round(min(done_count, total) / total * 100, 1) if total else 0,
+        "progress_pct": round(completed_count / total * 100, 1) if total else 0,
         "batch_number": feed.get("batch_number", 1),
         "can_refresh": feed.get("is_fully_completed", False),
     }
@@ -403,13 +416,25 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
                 {"_id": feed["_id"]},
                 {"$set": {"completed_ids": completed, "is_fully_completed": fully}},
             )
-        total = len(feed.get("question_ids", []))
+        qids = feed.get("question_ids", [])
+        total = len(qids)
         completed_count = len(completed)
         feed_completed = completed_count >= total if total else False
+        correct_ids = await attempts_col().distinct(
+            "question_id",
+            {
+                "user_id": user_id,
+                "feed_date": today_str,
+                "question_id": {"$in": qids},
+                "is_correct": True,
+            },
+        )
+        correct_count = len(set(correct_ids) & set(qids))
     else:
         total = 0
         completed_count = 0
         feed_completed = False
+        correct_count = 1 if is_correct else 0
 
     return {
         "is_correct": is_correct,
@@ -418,5 +443,7 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
         "question_id": question_id,
         "feed_completed": feed_completed,
         "completed_count": completed_count,
+        "correct_count": min(correct_count, completed_count),
+        "accuracy_pct": round(min(correct_count, completed_count) / completed_count * 100, 1) if completed_count else 0,
         "total": total,
     }

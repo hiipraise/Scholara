@@ -869,6 +869,8 @@ export default function HomePage() {
                     return {
                       ...prev,
                       completed_count: completedCount,
+                      correct_count: result.correct_count ?? prev.correct_count,
+                      accuracy_pct: result.accuracy_pct ?? prev.accuracy_pct,
                       is_fully_completed:
                         result.feed_completed ?? prev.is_fully_completed,
                       progress_pct: total
@@ -1029,10 +1031,10 @@ export default function HomePage() {
                   </div>
                   <div className="bg-cream-200/5 rounded-lg p-3 text-center">
                     <div className="text-cream-200/35 text-[10px] uppercase">
-                      Done
+                      Correct
                     </div>
                     <div className="text-accent-sage font-mono text-lg">
-                      {feed?.completed_count ?? 0}
+                      {feed?.correct_count ?? 0}
                     </div>
                   </div>
                   <div className="bg-cream-200/5 rounded-lg p-3 text-center">
@@ -1041,7 +1043,7 @@ export default function HomePage() {
                     </div>
                     <div className="text-cream-200 font-mono text-lg">
                       {feedModalMode === "complete"
-                        ? `${feed?.progress_pct ?? 0}%`
+                        ? `${feed?.accuracy_pct ?? 0}%`
                         : hiddenInActiveFeed}
                     </div>
                   </div>

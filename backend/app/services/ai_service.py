@@ -1,12 +1,12 @@
 """
 Nexus Core — AI Engine for Scholara
-Supports Groq (free), Google Gemini (free), or mock fallback.
+Supports Groq (free), Google Gemini (free), and an explicit local-dev mock mode.
 
 Free API keys:
   Groq   → https://console.groq.com          (no billing, generous limits)
   Gemini → https://aistudio.google.com/apikey (free tier: 15 RPM, 1M TPD)
 
-Set AI_PROVIDER in .env to "groq", "gemini", or "mock".
+Set AI_PROVIDER in .env to "groq" or "gemini". Local mock questions require AI_PROVIDER=mock and ALLOW_MOCK_QUESTION_GENERATION=true.
 """
 import json
 import re
@@ -19,6 +19,13 @@ from app.core.database import model_feedback_col
 from app.services.intelligence_service import infer_course_profile
 
 logger = logging.getLogger(__name__)
+
+MIN_QUESTION_SOURCE_CHARS = 500
+
+
+def _mock_questions_allowed() -> bool:
+    return settings.APP_ENV.lower() != "production" and settings.AI_PROVIDER.lower() == "mock" and settings.ALLOW_MOCK_QUESTION_GENERATION
+
 
 
 # ── PDF Text Extraction ────────────────────────────────────────────────────
@@ -405,10 +412,24 @@ async def generate_questions(
     adaptive_context = adaptive_context or {}
     feedback_notes = await _recent_model_feedback(course_id, course_code, course_title)
 
-    if settings.AI_PROVIDER == "mock" or (
-        not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY
-    ):
+    if _mock_questions_allowed():
+        logger.warning(
+            "Using explicit local mock question generation for %s week %s",
+            course_code,
+            week_number,
+        )
         return _mock_questions(course_code, course_title, week_number, count, adaptive_context)
+
+    if len(truncated.strip()) < MIN_QUESTION_SOURCE_CHARS:
+        logger.error(
+            "Question generation blocked for %s week %s: extracted PDF text is too short (%s chars)",
+            course_code,
+            week_number,
+            len(truncated.strip()),
+        )
+        raise ValueError(
+            f"Insufficient extracted PDF text for {course_code} week {week_number}; cannot generate real questions"
+        )
 
     try:
         raw = await _call_ai(
@@ -446,15 +467,24 @@ async def generate_questions(
                 "solution_steps": q.get("solution_steps", []),
             })
         qs = normalized
-        # Groq/Gemini might return slightly fewer — pad with mocks if needed
         if len(qs) < count:
-            qs += _mock_questions(
-                course_code, course_title, week_number, count - len(qs), adaptive_context
+            logger.warning(
+                "AI returned fewer questions than requested for %s week %s: requested=%s returned=%s",
+                course_code,
+                week_number,
+                count,
+                len(qs),
             )
+        if not qs:
+            raise ValueError(f"AI returned no usable questions for {course_code} week {week_number}")
         return qs[:count]
-    except Exception as e:
-        logger.error(f"Question generation failed: {e}")
-        return _mock_questions(course_code, course_title, week_number, count, adaptive_context)
+    except Exception:
+        logger.exception(
+            "Question generation failed for %s week %s; refusing to create placeholder questions",
+            course_code,
+            week_number,
+        )
+        raise
 
 
 def _mock_questions(
@@ -546,8 +576,22 @@ async def process_pdf_file(
     course_id: Optional[str] = None,
 ) -> dict:
     text = extract_text_from_pdf(file_path)
-    if not text.strip():
-        raise ValueError("PDF appears empty or unreadable")
+    text_len = len(text.strip())
+    logger.info(
+        "Extracted %s characters from PDF for %s week %s before AI prompt construction",
+        text_len,
+        course_code,
+        week_number,
+    )
+    if text_len < MIN_QUESTION_SOURCE_CHARS:
+        logger.error(
+            "PDF extraction produced insufficient text for %s week %s: %s chars from %s",
+            course_code,
+            week_number,
+            text_len,
+            file_path,
+        )
+        raise ValueError("PDF appears empty, unreadable, or too short for real question generation")
 
     summary_data = await generate_summary(text)
     inferred_profile = infer_course_profile(

@@ -55,6 +55,8 @@ export interface DailyFeed {
   questions: Question[];
   total: number;
   completed_count: number;
+  correct_count?: number;
+  accuracy_pct?: number;
   is_fully_completed: boolean;
   progress_pct: number;
   batch_number?: number;
@@ -68,6 +70,8 @@ export interface AnswerResult {
   question_id: string;
   feed_completed?: boolean;
   completed_count?: number;
+  correct_count?: number;
+  accuracy_pct?: number;
   total?: number;
 }
 
