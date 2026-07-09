@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Options: "groq" | "gemini" | "mock"
     # "mock" requires no key and returns placeholder content (good for testing)
     AI_PROVIDER: str = "groq"
+    ALLOW_MOCK_QUESTION_GENERATION: bool = False
 
     # Groq — free at console.groq.com (no billing required)
     GROQ_API_KEY: str = ""
