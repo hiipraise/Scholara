@@ -3,13 +3,15 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from bson import ObjectId
 from datetime import datetime, date
+import logging
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
-from app.core.audit_logger import get_audit_recorder
 from app.core.database import (
     exams_col, cycles_col, calendars_col,
     users_col, courses_col, questions_col, question_flags_col, pdf_jobs_col, audit_logs_col,
 )
+
+logger = logging.getLogger(__name__)
 from app.core.database import model_feedback_col
 from app.services.study_cycle_service import (
     refresh_study_cycle_for_term,
@@ -298,7 +300,6 @@ async def list_question_flags(status: str = "open", admin: dict = Depends(get_ad
 async def resolve_question_flags(
     question_id: str,
     body: FlagResolveIn,
-    audit = Depends(get_audit_recorder),
     admin: dict = Depends(get_admin_user),
 ):
     if not ObjectId.is_valid(question_id):
@@ -331,16 +332,6 @@ async def resolve_question_flags(
             }, "$setOnInsert": {"created_at": now}},
         )
 
-    if body.deactivate_question:
-        await audit(
-            "question_flag_resolve",
-            question_id,
-            {
-                "deactivate_question": True,
-                "resolved_count": result.modified_count,
-            },
-        )
-
     return {
         "ok": True,
         "question_id": question_id,
@@ -352,7 +343,6 @@ async def resolve_question_flags(
 @router.patch("/question-flags/resolve-all")
 async def resolve_all_question_flags(
     body: FlagResolveIn,
-    audit = Depends(get_audit_recorder),
     admin: dict = Depends(get_admin_user),
 ):
     now = datetime.utcnow()
@@ -395,17 +385,6 @@ async def resolve_all_question_flags(
             ),
             "updated_at": now,
         }},
-    )
-
-    await audit(
-        "bulk_question_flag_resolution",
-        "all-open-question-flags",
-        {
-            "question_count": len(valid_qids),
-            "resolved_count": result.modified_count,
-            "deactivated_count": deactivated_count,
-            "deactivate_question": body.deactivate_question,
-        },
     )
 
     return {
@@ -491,26 +470,45 @@ async def update_level(
     return {"message": f"Level updated to {level} Semester {semester}"}
 
 
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    superadmin: dict = Depends(get_superadmin_user),
+):
+    """
+    SuperAdmin-only: Reset a user's password to a strong random value.
+    Returns the new plaintext password (must be shared securely out-of-band).
+    """
+    import secrets
+    from app.core.password import hash_password
+
+    user = await users_col().find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate a strong 20-char random password
+    new_password = secrets.token_urlsafe(15)  # 20 chars, url-safe
+    password_hash = hash_password(new_password)
+
+    await users_col().update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"password_hash": password_hash}},
+    )
+
+    logger.info(f"Password reset for {user.get('email')} by superadmin {superadmin['email']}")
+
+    return {
+        "message": "Password reset successfully. Share the new password securely.",
+        "user_id": user_id,
+        "new_password": new_password,
+    }
+
+
 @router.delete("/users/{user_id}")
 async def deactivate_user(
     user_id: str,
-    audit = Depends(get_audit_recorder),
     superadmin: dict = Depends(get_superadmin_user),
 ):
     user = await users_col().find_one({"_id": ObjectId(user_id)})
     await users_col().update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": False}})
-    if user:
-        await audit(
-            "user_deactivated",
-            user_id,
-            {
-                "user": {
-                    "email": user.get("email"),
-                    "full_name": user.get("full_name"),
-                    "role": user.get("role"),
-                    "level": user.get("level"),
-                    "semester": user.get("semester"),
-                }
-            },
-        )
     return {"message": "User deactivated"}

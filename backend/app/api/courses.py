@@ -1,5 +1,5 @@
 # app/api/courses.py
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 from bson import ObjectId
@@ -8,9 +8,7 @@ import os, uuid
 
 from app.core.config import settings
 from app.core.deps import get_current_user, get_admin_user
-from app.core.audit_logger import get_audit_recorder
 from app.core.database import courses_col, pdfs_col, questions_col, pdf_jobs_col
-from app.core.upload_rate_limiter import limiter
 from app.services.study_cycle_service import refresh_study_cycle_for_term
 
 router = APIRouter()
@@ -85,7 +83,6 @@ async def create_course(body: CourseCreate, admin: dict = Depends(get_admin_user
 @router.delete("/{course_id}")
 async def delete_course(
     course_id: str,
-    audit = Depends(get_audit_recorder),
     admin: dict = Depends(get_admin_user),
 ):
     try:
@@ -112,22 +109,6 @@ async def delete_course(
     except Exception:
         pass
 
-    await audit(
-        "course_deleted",
-        course_id,
-        {
-            "course": {
-                "code": course.get("code"),
-                "title": course.get("title"),
-                "level": course.get("level"),
-                "semester": course.get("semester"),
-                "credit_units": course.get("credit_units", 3),
-            },
-            "soft_deleted_related_pdfs": True,
-            "soft_deleted_related_questions": True,
-        },
-    )
-
     return {"message": "Course deleted"}
 
 
@@ -143,9 +124,7 @@ async def list_pdfs(course_id: str, current_user: dict = Depends(get_current_use
 
 
 @router.post("/{course_id}/upload-pdf")
-@limiter.limit("20/hour")
 async def upload_pdf(
-    request: Request,
     course_id: str,
     background_tasks: BackgroundTasks,
     week_number: int = Form(...),

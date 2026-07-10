@@ -1,65 +1,106 @@
-from pydantic import field_validator, model_validator
+# app/core/config.py
+"""
+Hardened configuration — every secret comes exclusively from environment variables.
+NO hardcoded defaults for secrets, credentials, or keys.
+If a required env var is missing, the app raises a clear error at startup.
+"""
 from pydantic_settings import BaseSettings
 from typing import List
+from pathlib import Path
+
 
 class Settings(BaseSettings):
+    # ── Application ────────────────────────────────────────────────────────
     APP_NAME: str = "Scholara"
     APP_ENV: str = "development"
-    SECRET_KEY: str = "scholara-super-secret-key-change-in-production-2026"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_DAYS: int = 30
 
-    # MongoDB
+    # ── Security Keys (REQUIRED via environment — NO defaults) ─────────────
+    SECRET_KEY: str = ""                    # REQUIRED — must be set via .env
+    ALGORITHM: str = "HS256"
+
+    # ── JWT Configuration ──────────────────────────────────────────────────
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # ── Signup Gating ──────────────────────────────────────────────────────
+    SIGNUP_INVITE_CODE: str = ""            # REQUIRED — users must supply this to sign up
+
+    # ── MongoDB ────────────────────────────────────────────────────────────
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "scholara_db"
 
-    # ── AI Provider (free tiers) ─────────────────────────────────────────
-    # Options: "groq" | "gemini" | "mock"
-    # "mock" requires no key and returns placeholder content (good for testing)
+    # ── AI Provider (free tiers) ───────────────────────────────────────────
     AI_PROVIDER: str = "groq"
-    ALLOW_MOCK_QUESTION_GENERATION: bool = False
-
-    # Groq — free at console.groq.com (no billing required)
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"   # fast & free; alt: llama-3.3-70b-versatile
-
-    # Google Gemini — free at aistudio.google.com/apikey
+    GROQ_MODEL: str = "llama-3.1-70b-versatile"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"      # free tier, 15 RPM / 1M TPD
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
-    # SuperAdmin
-    SUPERADMIN_EMAIL: str = "info.praisechinedu@gmail.com"
+    # ── SuperAdmin ────────────────────────────────────────────────────────
+    SUPERADMIN_EMAIL: str = ""              # REQUIRED — must be set via .env
+    SUPERADMIN_LEVEL: str = "100L"          # Optional, default "100L"
+    SUPERADMIN_SEMESTER: int = 1            # Optional, default 1
 
-    # Audit logging
-    ENABLE_AUDIT_LOG: bool = False
-    AUDIT_LOG_FILE: str = "logs/audit.log"
-
-    # CORS
+    # ── CORS ───────────────────────────────────────────────────────────────
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://scholara.app",
     ]
 
-    # Upload
+    # ── File Upload ────────────────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE_MB: int = 50
 
-    @field_validator("ALLOWED_ORIGINS")
-    @classmethod
-    def validate_origins(cls, value: List[str]) -> List[str]:
-        if "*" in value:
-            raise ValueError("Wildcard CORS origins are not allowed")
-        return value
+    # ── Rate Limiting ──────────────────────────────────────────────────────
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
+    RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE: int = 5
 
-    @model_validator(mode="after")
-    def validate_production_secrets(self):
-        if self.APP_ENV.lower() == "production" and "change-in-production" in self.SECRET_KEY:
-            raise ValueError("SECRET_KEY must be overridden in production")
-        return self
+    # ── Security Headers ───────────────────────────────────────────────────
+    ENABLE_HSTS: bool = True
+    HSTS_MAX_AGE: int = 31536000
+    ENABLE_SECURITY_HEADERS: bool = True
+    ENABLE_REQUEST_LOGGING: bool = True
+
+    # ── HTTPS/TLS ──────────────────────────────────────────────────────────
+    FORCE_HTTPS: bool = False
+    SECURE_COOKIES: bool = False
+
+    # ── Logging ────────────────────────────────────────────────────────────
+    LOG_LEVEL: str = "INFO"
+    ENABLE_AUDIT_LOG: bool = False
+    AUDIT_LOG_FILE: str = "logs/audit.log"
 
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+    def __init__(self, **data):
+        super().__init__(**data)
+
+        # ── REQUIRED env-var validation — fail fast with clear messages ──
+        missing: list[str] = []
+
+        if not self.SECRET_KEY:
+            missing.append("SECRET_KEY")
+        if not self.SUPERADMIN_EMAIL:
+            missing.append("SUPERADMIN_EMAIL")
+        if not self.SIGNUP_INVITE_CODE:
+            missing.append("SIGNUP_INVITE_CODE")
+
+        if self.APP_ENV == "production":
+            if not self.MONGODB_URL or self.MONGODB_URL == "mongodb://localhost:27017":
+                missing.append("MONGODB_URL (must be set for production)")
+
+        if missing:
+            raise ValueError(
+                "CRITICAL CONFIGURATION ERROR — The following required environment "
+                "variables are missing or empty:\n  " + "\n  ".join(missing) + "\n\n"
+                "Set them in your .env file or environment before starting the server."
+            )
+
+        # Create logs directory if audit logging enabled
+        if self.ENABLE_AUDIT_LOG:
+            Path(self.AUDIT_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+
 
 settings = Settings()

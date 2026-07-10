@@ -13,18 +13,20 @@ import {
   Check,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { setTokens } from "../api/client";
 import { authApi } from "../api/auth";
 import { usersApi } from "../api/index";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 
 export default function ProfilePage() {
-  const { user, updateUser, setAuth } = useAuthStore();
+  const { user, updateUser } = useAuthStore();
 
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState(user?.full_name || "");
   const [editEmail, setEditEmail] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [editAcademic, setEditAcademic] = useState(false);
   const [levelVal, setLevelVal] = useState(user?.level || "100L");
   const [semesterVal, setSemesterVal] = useState<number>(user?.semester || 1);
@@ -39,12 +41,13 @@ export default function ProfilePage() {
   });
 
   const emailMutation = useMutation({
-    mutationFn: () => authApi.changeEmail(newEmail),
+    mutationFn: () => authApi.changeEmail(newEmail, passwordConfirm),
     onSuccess: (res) => {
       updateUser({ email: res.data.new_email });
-      setAuth({ ...user!, email: res.data.new_email }, res.data.access_token);
+      setTokens(res.data.access_token, res.data.refresh_token);
       setEditEmail(false);
       setNewEmail("");
+      setPasswordConfirm("");
       toast.success("Email updated");
     },
     onError: (e: any) =>
@@ -332,7 +335,7 @@ export default function ProfilePage() {
               <div className="pt-3 border-t border-cream-200/8 space-y-3">
                 <p className="text-cream-200/35 text-xs">
                   Changing your email grants access under the new address
-                  immediately.
+                  immediately. Confirm your current password to proceed.
                 </p>
                 <input
                   type="email"
@@ -342,12 +345,20 @@ export default function ProfilePage() {
                   placeholder="new@email.com"
                   autoFocus
                 />
-                <div className="flex gap-3">
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  className="input-field text-sm mt-2"
+                  placeholder="Current password to confirm"
+                  autoComplete="current-password"
+                />
+                <div className="flex gap-3 mt-2">
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     onClick={() => emailMutation.mutate()}
-                    disabled={!newEmail || emailMutation.isPending}
+                    disabled={!newEmail || !passwordConfirm || emailMutation.isPending}
                     className="btn-primary text-sm flex items-center gap-2"
                   >
                     <Check size={14} />
@@ -357,6 +368,7 @@ export default function ProfilePage() {
                     onClick={() => {
                       setEditEmail(false);
                       setNewEmail("");
+                      setPasswordConfirm("");
                     }}
                     className="btn-ghost text-sm"
                   >

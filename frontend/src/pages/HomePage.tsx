@@ -38,6 +38,34 @@ const COURSE_COLORS = [
 
 const PRACTICE_SESSION_KEY_PREFIX = "scholara.practice.session";
 
+/**
+ * sessionStorage wrapper — same API as localStorage but per-tab only,
+ * cleared when the tab closes.
+ */
+function sessionStoreGet(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function sessionStoreSet(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Storage full or unavailable — silently skip.
+  }
+}
+
+function sessionStoreRemove(key: string) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Best-effort.
+  }
+}
+
 export default function HomePage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
@@ -73,7 +101,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!sessionKey) return;
-    const raw = localStorage.getItem(sessionKey);
+    const raw = sessionStoreGet(sessionKey);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as {
@@ -86,17 +114,17 @@ export default function HomePage() {
         toast.success("Resumed focused practice session");
       }
     } catch {
-      localStorage.removeItem(sessionKey);
+      sessionStoreRemove(sessionKey);
     }
   }, [sessionKey]);
 
   useEffect(() => {
     if (!sessionKey) return;
     if (!customFeed) {
-      localStorage.removeItem(sessionKey);
+      sessionStoreRemove(sessionKey);
       return;
     }
-    localStorage.setItem(
+    sessionStoreSet(
       sessionKey,
       JSON.stringify({ customFeed, practiceResults }),
     );

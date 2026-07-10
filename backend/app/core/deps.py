@@ -1,14 +1,24 @@
 # app/core/deps.py
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+"""
+Dependency injection for FastAPI.
+Handles authentication, authorization, and request validation.
+"""
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from datetime import date
+from typing import Optional
+from bson import ObjectId
 from app.core.security import decode_token
 from app.core.database import users_col, calendars_col
+import logging
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/signin", auto_error=False)
+logger = logging.getLogger(__name__)
+
+security = HTTPBearer()
 
 
 def _next_term(level: str, semester: int) -> tuple[str, int]:
+    """Calculate next academic term."""
     if semester == 1:
         return level, 2
     current = int(level.replace("L", ""))
@@ -16,6 +26,7 @@ def _next_term(level: str, semester: int) -> tuple[str, int]:
 
 
 def _parse_iso(value: str | None) -> date | None:
+    """Parse ISO date string."""
     if not value:
         return None
     try:
@@ -66,29 +77,74 @@ async def _sync_academic_position(user: dict) -> dict:
 
     return user
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Not authenticated",
-                        headers={"WWW-Authenticate": "Bearer"})
-    if not token:
-        raise exc
-    payload = decode_token(token)
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict:
+    """Extract and validate current authenticated user from JWT token."""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials
+    payload = decode_token(token, token_type="access")
     if not payload:
-        raise exc
-    user = await users_col().find_one({"email": payload.get("email")})
-    if not user or not user.get("is_active", True):
-        raise exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    email: str = payload.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing email claim",
+        )
+
+    user = await users_col().find_one({"email": email.lower()})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
     user = await _sync_academic_position(user)
     user["_id"] = str(user["_id"])
-    user["id"] = user["_id"] 
+    user["id"] = str(user.get("_id"))
+
     return user
 
+
 async def get_admin_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Verify current user has admin or superadmin role."""
     if current_user.get("role") not in ("admin", "superadmin"):
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
     return current_user
 
+
 async def get_superadmin_user(current_user: dict = Depends(get_current_user)) -> dict:
+    """Verify current user has superadmin role."""
     if current_user.get("role") != "superadmin":
-        raise HTTPException(status_code=403, detail="SuperAdmin access required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superadmin access required",
+        )
     return current_user
+
+
+def validate_object_id(id_str: str) -> ObjectId:
+    """Validate and convert string to MongoDB ObjectId. Prevents NoSQL injection."""
+    try:
+        return ObjectId(id_str)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
