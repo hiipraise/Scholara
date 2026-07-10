@@ -224,12 +224,14 @@ async def get_or_create_daily_feed(user: dict) -> dict:
 
     if existing:
         if existing.get("level") != level or existing.get("semester") != semester:
+            # Level/semester changed — rebuild the feed for the new term
+            new_ids = await _build_question_ids(user, exclude=[], target=FEED_SIZE)
             await col.update_one(
                 {"_id": existing["_id"]},
                 {"$set": {
                     "level": level,
                     "semester": semester,
-                    "question_ids": [],
+                    "question_ids": new_ids,
                     "completed_ids": [],
                     "is_fully_completed": False,
                     "batch_number": 1,
@@ -237,7 +239,7 @@ async def get_or_create_daily_feed(user: dict) -> dict:
             )
             existing["level"] = level
             existing["semester"] = semester
-            existing["question_ids"] = []
+            existing["question_ids"] = new_ids
             existing["completed_ids"] = []
             existing["is_fully_completed"] = False
             existing["batch_number"] = 1

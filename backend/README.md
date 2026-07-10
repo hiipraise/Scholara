@@ -39,8 +39,15 @@ Free tier: 15 requests/minute, 1 million tokens/day.
 #### Option C — Mock (no key, for testing UI)
 ```
 AI_PROVIDER=mock
+ALLOW_MOCK_QUESTION_GENERATION=true
 ```
-Returns placeholder questions and summaries instantly.
+Returns placeholder summaries and study cycles instantly.
+
+To also generate **placeholder questions** (useful for testing the feed UI without real AI calls):
+```
+ALLOW_MOCK_QUESTION_GENERATION=true
+```
+> **Note:** Mock question generation is disallowed in production and requires both `AI_PROVIDER=mock` *and* `ALLOW_MOCK_QUESTION_GENERATION=true`.
 
 ### 4. Seed database
 ```bash

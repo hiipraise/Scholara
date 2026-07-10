@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.1-70b-versatile"
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
+    ALLOW_MOCK_QUESTION_GENERATION: bool = False  # only effective when AI_PROVIDER=mock and APP_ENV != production
 
     # ── SuperAdmin ────────────────────────────────────────────────────────
     SUPERADMIN_EMAIL: str = ""              # REQUIRED — must be set via .env

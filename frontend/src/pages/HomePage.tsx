@@ -269,16 +269,18 @@ export default function HomePage() {
   // Build course map with colors
   const courseMap = useMemo(() => {
     const map: Record<string, { code: string; color: string }> = {};
-    courses?.forEach((c, i) => {
-      map[c.id] = {
-        code: c.code,
-        color: COURSE_COLORS[i % COURSE_COLORS.length],
-      };
-    });
+    if (Array.isArray(courses)) {
+      courses.forEach((c, i) => {
+        map[c.id] = {
+          code: c.code,
+          color: COURSE_COLORS[i % COURSE_COLORS.length],
+        };
+      });
+    }
     return map;
   }, [courses]);
 
-  const currentCourses = (courses || []).filter(
+  const currentCourses = (Array.isArray(courses) ? courses : []).filter(
     (c) => c.level === user?.level && c.semester === user?.semester,
   );
   const practicePool = currentCourses;
@@ -310,7 +312,7 @@ export default function HomePage() {
 
   // Progress groups by course
   const questionsByCourse = useMemo(() => {
-    if (!feed?.questions || !courses) return [];
+    if (!feed?.questions || !Array.isArray(courses)) return [];
     return courses
       .map((course, i) => {
         const courseQs = feed.questions.filter(
@@ -482,11 +484,11 @@ export default function HomePage() {
             <h3 className="text-cream-200/70 text-sm font-semibold">Streak</h3>
           </div>
           <div className="font-mono text-2xl text-cream-200">
-            {insights?.streak.current ?? 0}d
+            {insights?.streak?.current ?? 0}d
           </div>
           <div className="text-cream-200/35 text-xs mt-1">
-            Longest: {insights?.streak.longest ?? 0}d · Missed(14d):{" "}
-            {insights?.streak.missed_last_14_days ?? 14}
+            Longest: {insights?.streak?.longest ?? 0}d · Missed(14d):{" "}
+            {insights?.streak?.missed_last_14_days ?? 14}
           </div>
         </div>
         <div className="card p-4">
@@ -658,7 +660,7 @@ export default function HomePage() {
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {progress.courses.map((cp) => (
+            {Array.isArray(progress.courses) && progress.courses.map((cp) => (
               <div key={cp.course_id} className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between mb-1.5">
@@ -774,7 +776,7 @@ export default function HomePage() {
                 >
                   All Courses
                 </button>
-                {courses?.map((c, i) => (
+                {Array.isArray(courses) && courses.map((c, i) => (
                   <button
                     key={c.id}
                     onClick={() =>
