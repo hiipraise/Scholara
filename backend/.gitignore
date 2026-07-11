@@ -20,3 +20,4 @@ uploads/
 htmlcov/
 .coverage
 *.log
+/seed.py

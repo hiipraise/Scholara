@@ -9,15 +9,18 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import Optional
 import logging
+from fastapi import Request as FastAPIRequest
 
 from app.core.database import users_col
 from app.core.security import (
     create_access_token, create_refresh_token, decode_token,
+    blacklist_token, is_token_blacklisted,
 )
 from app.core.password import hash_password, verify_password, validate_password_strength
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.rate_limiter import auth_rate_limiter
+from app.services.audit_service import log_audit
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -225,7 +228,7 @@ async def sign_in(body: SignInRequest):
 
 @router.post("/refresh")
 async def refresh_access_token(body: RefreshTokenRequest):
-    """Get a new access token using a refresh token."""
+    """Rotate refresh token: blacklist old refresh, issue new access + refresh."""
     payload = decode_token(body.refresh_token, token_type="refresh")
     if not payload:
         raise HTTPException(
@@ -241,10 +244,18 @@ async def refresh_access_token(body: RefreshTokenRequest):
             detail="User not found or inactive"
         )
 
+    # ── Blacklist the old refresh token (rotation) ──
+    await blacklist_token(payload)
+
     token_data = {"email": email, "role": user["role"]}
     access_token = create_access_token(token_data)
+    new_refresh = create_refresh_token({"email": email})
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+    }
 
 
 @router.get("/me")
@@ -256,9 +267,12 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 @router.put("/password")
 async def change_password(
     body: ChangePasswordRequest,
+    request: FastAPIRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Change password (requires old password verification)."""
+    """Change password (requires old password verification).
+    Blacklists old tokens and issues fresh ones.
+    """
     col = users_col()
 
     if not verify_password(body.old_password, current_user.get("password_hash", "")):
@@ -274,6 +288,13 @@ async def change_password(
             detail="New password too weak: " + "; ".join(strength_errors)
         )
 
+    # ── Blacklist current access token ──
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        old_payload = decode_token(auth_header[7:], token_type="access")
+        if old_payload:
+            await blacklist_token(old_payload)
+
     new_hash = hash_password(body.new_password)
     await col.update_one(
         {"_id": current_user["_id"]},
@@ -283,16 +304,31 @@ async def change_password(
         }}
     )
 
+    await log_audit(
+        actor_id=str(current_user.get("_id", "")), actor_email=current_user.get("email", ""),
+        action="self.password_change", target_type="auth",
+    )
+
+    new_token = create_access_token({"email": current_user["email"], "role": current_user["role"]})
+    new_refresh = create_refresh_token({"email": current_user["email"]})
+
     logger.info(f"Password changed: {current_user['email']}")
-    return {"message": "Password updated successfully"}
+    return {
+        "message": "Password updated successfully",
+        "access_token": new_token,
+        "refresh_token": new_refresh,
+    }
 
 
 @router.put("/email")
 async def change_email(
     body: ChangeEmailRequest,
+    request: FastAPIRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Change email (requires password confirmation)."""
+    """Change email (requires password confirmation).
+    Blacklists old tokens and issues fresh ones for the new email.
+    """
     if not verify_password(body.password, current_user.get("password_hash", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -306,11 +342,20 @@ async def change_email(
             detail="New email must be different"
         )
 
+    # ── Blacklist current access token ──
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        old_payload = decode_token(auth_header[7:], token_type="access")
+        if old_payload:
+            await blacklist_token(old_payload)
+
+    old_email = current_user["email"]
+
     col = users_col()
     from pymongo.errors import DuplicateKeyError
     try:
         result = await col.update_one(
-            {"email": current_user["email"]},
+            {"email": old_email},
             {"$set": {"email": new_email, "role": _role_for(new_email)}},
         )
     except DuplicateKeyError:
@@ -321,6 +366,12 @@ async def change_email(
 
     if result.matched_count != 1:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    await log_audit(
+        actor_id=str(current_user.get("_id", "")), actor_email=old_email,
+        action="self.email_change", target_type="auth",
+        details={"from": old_email, "to": new_email},
+    )
 
     new_token = create_access_token({"email": new_email, "role": _role_for(new_email)})
     new_refresh = create_refresh_token({"email": new_email})
@@ -334,7 +385,21 @@ async def change_email(
 
 
 @router.post("/logout")
-async def logout(current_user: dict = Depends(get_current_user)):
-    """Logout endpoint (token revocation is client-side)."""
+async def logout(
+    request: FastAPIRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Logout endpoint — blacklists the current access token."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        old_payload = decode_token(auth_header[7:], token_type="access")
+        if old_payload:
+            await blacklist_token(old_payload)
+
+    await log_audit(
+        actor_id=str(current_user.get("_id", "")), actor_email=current_user.get("email", ""),
+        action="session.logout", target_type="auth",
+    )
+
     logger.info(f"User logged out: {current_user['email']}")
     return {"message": "Logged out successfully"}

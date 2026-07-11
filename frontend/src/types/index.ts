@@ -95,6 +95,7 @@ export interface WeekProgressItem {
   current_academic_week: number;
   unlocked_week: number;
   weeks_done: number[];
+  question_counts: Record<number, number>;
 }
 
 export interface FeedProgress {
@@ -241,4 +242,12 @@ export interface AuditLogEntry {
   target_id: string;
   payload: Record<string, unknown>;
   timestamp: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
 }

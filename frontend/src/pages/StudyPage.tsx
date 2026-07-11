@@ -8,11 +8,12 @@ import {
   Clock,
   AlertTriangle,
 } from "lucide-react";
-import { format, parseISO, isToday, isPast, addDays } from "date-fns";
+import { format, parseISO, isToday, isPast } from "date-fns";
 import clsx from "clsx";
 import { adminApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
 import type { ExamSlot } from "../types";
+import { COURSE_COLORS } from "../constants/courseColors";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -42,17 +43,6 @@ function getCurrentStudyDay(lecturesStartStr: string | null): number {
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   return (diffDays % 5) + 1;
 }
-
-const COURSE_COLORS = [
-  "#4a7fb5",
-  "#5a8a6e",
-  "#c9a84c",
-  "#8a6eaf",
-  "#d4604a",
-  "#4aa8af",
-  "#af8a4a",
-  "#6e8a5a",
-];
 
 export default function StudyPage() {
   const { user } = useAuthStore();
@@ -133,15 +123,18 @@ export default function StudyPage() {
   const displayedCycle =
     cycleTab === "current" ? cycle : selectedPast?.days || [];
 
-  // Days to display: current, next 2
+  // Days to display: for current term show today + next 2;
+  // for past terms show all days (no "today" anchor)
   const displayDays = displayedCycle
-    ? [
-        displayedCycle.find((d) => d.day_number === currentStudyDay),
-        displayedCycle.find((d) => d.day_number === (currentStudyDay % 5) + 1),
-        displayedCycle.find(
-          (d) => d.day_number === ((currentStudyDay + 1) % 5) + 1,
-        ),
-      ].filter(Boolean)
+    ? cycleTab === "current"
+      ? [
+          displayedCycle.find((d) => d.day_number === currentStudyDay),
+          displayedCycle.find((d) => d.day_number === (currentStudyDay % 5) + 1),
+          displayedCycle.find(
+            (d) => d.day_number === ((currentStudyDay + 1) % 5) + 1,
+          ),
+        ].filter(Boolean)
+      : displayedCycle.slice(0, 3)
     : [];
 
   return (
@@ -274,23 +267,23 @@ export default function StudyPage() {
                         {day.courses.map((course, ci) => (
                           <div
                             key={course.id}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+                            className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg"
                             style={{
                               background: `${COURSE_COLORS[ci % COURSE_COLORS.length]}12`,
                             }}
                           >
                             <div
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
                               style={{
                                 background:
                                   COURSE_COLORS[ci % COURSE_COLORS.length],
                               }}
                             />
-                            <div className="min-w-0">
-                              <div className="text-cream-200/90 text-xs font-semibold">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-cream-200/90 text-sm font-semibold leading-tight">
                                 {course.code}
                               </div>
-                              <div className="text-cream-200/40 text-[10px] truncate">
+                              <div className="text-cream-200/45 text-xs leading-relaxed mt-0.5 line-clamp-2">
                                 {course.title}
                               </div>
                             </div>

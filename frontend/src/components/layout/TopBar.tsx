@@ -5,6 +5,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/': 'Home Feed',
   '/courses': 'Courses',
   '/study': 'Study Cycle',
+  '/intelligence': 'Intelligence',
   '/profile': 'Profile',
   '/admin': 'Admin Panel',
 };

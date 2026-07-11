@@ -36,6 +36,7 @@ def formulas_col():    return col("course_formulas")
 def notes_col():       return col("content_notes")
 def pdf_jobs_col():    return col("pdf_jobs")
 def audit_logs_col():  return col("audit_log")
+def token_blacklist_col(): return col("token_blacklist")
 
 async def create_indexes():
     db = get_db()
@@ -62,3 +63,5 @@ async def create_indexes():
     await db.pdf_jobs.create_index([("course_id", 1), ("pdf_id", 1)], unique=True)
     await db.audit_log.create_index([("timestamp", -1)])
     await db.audit_log.create_index([("actor_id", 1), ("timestamp", -1)])
+    await db.token_blacklist.create_index("jti", unique=True)
+    await db.token_blacklist.create_index("expires_at", expireAfterSeconds=0)

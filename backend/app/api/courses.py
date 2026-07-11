@@ -1,10 +1,10 @@
 # app/api/courses.py
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional
 from bson import ObjectId
 from datetime import datetime
-import os, uuid
+import os, uuid, re
 
 from app.core.config import settings
 from app.core.deps import get_current_user, get_admin_user
@@ -18,10 +18,6 @@ def _str_id(doc: dict) -> dict:
     doc = dict(doc)
     doc["id"] = str(doc.pop("_id", ""))
     return doc
-
-
-async def _update_job(job_id: str, data: dict):
-    await pdf_jobs_col().update_one({"_id": ObjectId(job_id)}, {"$set": data})
 
 
 @router.get("/")
@@ -126,7 +122,6 @@ async def list_pdfs(course_id: str, current_user: dict = Depends(get_current_use
 @router.post("/{course_id}/upload-pdf")
 async def upload_pdf(
     course_id: str,
-    background_tasks: BackgroundTasks,
     week_number: int = Form(...),
     file: UploadFile = File(...),
     admin: dict = Depends(get_admin_user),
@@ -164,7 +159,8 @@ async def upload_pdf(
             os.remove(file_path)
         raise
 
-    if not header.startswith(b"%PDF-"):
+    # Full 8-byte PDF magic-number check: %PDF-X.Y (e.g. %PDF-1.4)
+    if not re.match(rb"%PDF-\d\.\d", header):
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=400, detail="Only valid PDF files accepted")
@@ -199,10 +195,6 @@ async def upload_pdf(
     }
     job_result = await pdf_jobs_col().insert_one(job_doc)
 
-    background_tasks.add_task(
-        _process_pdf_bg, str(job_result.inserted_id), pdf_id, file_path,
-        course["code"], course["title"], week_number, course_id,
-    )
     return {
         "id": pdf_id,
         "job_id": str(job_result.inserted_id),
@@ -219,7 +211,7 @@ async def delete_pdf(
     admin: dict = Depends(get_admin_user),
 ):
     result = await pdfs_col().update_one(
-        {"_id": ObjectId(pdf_id), "is_deleted": {"$ne": True}},  # ← removed course_id filter
+        {"_id": ObjectId(pdf_id), "course_id": course_id, "is_deleted": {"$ne": True}},
         {"$set": {"is_deleted": True}},
     )
     if result.matched_count == 0:
@@ -242,101 +234,12 @@ async def update_pdf_week(
     if body.week_number < 1 or body.week_number > 20:
         raise HTTPException(status_code=400, detail="Week number must be between 1 and 20")
     result = await pdfs_col().update_one(
-        {"_id": ObjectId(pdf_id), "is_deleted": {"$ne": True}},  # ← removed course_id filter
+        {"_id": ObjectId(pdf_id), "course_id": course_id, "is_deleted": {"$ne": True}},
         {"$set": {"week_number": body.week_number}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="PDF not found")
     return {"message": "Week updated", "week_number": body.week_number}
-
-
-async def _process_pdf_bg(
-    job_id: str, pdf_id: str, file_path: str, course_code: str,
-    course_title: str, week_number: int, course_id: str,
-):
-    from app.services.ai_service import process_pdf_file
-    from app.services.intelligence_service import upsert_course_intelligence
-    try:
-        job_doc = await pdf_jobs_col().find_one({"_id": ObjectId(job_id)})
-        attempt = int((job_doc or {}).get("attempt_count", 0)) + 1
-        await _update_job(job_id, {
-            "status": "processing",
-            "attempt_count": attempt,
-            "last_attempt_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "last_error": None,
-        })
-
-        data = await process_pdf_file(file_path, course_code, course_title, week_number, course_id=course_id)
-        await pdfs_col().update_one(
-            {"_id": ObjectId(pdf_id)},
-            {"$set": {
-                "summary": data["summary"],
-                "key_points": data["key_points"],
-                "key_formulas": data["key_formulas"],
-                "is_processed": True,
-            }},
-        )
-        q_docs = []
-        for q in data["questions"]:
-            q_docs.append({
-                "course_id": course_id,
-                "pdf_id": pdf_id,
-                "week_number": week_number,
-                "question_text": q["question_text"],
-                "question_type": q.get("question_type", "mcq"),
-                "options": q.get("options"),
-                "correct_answer": q["correct_answer"],
-                "explanation": q.get("explanation", ""),
-                "difficulty": q.get("difficulty", "medium"),
-                "topic": q.get("topic", ""),
-                "question_style": q.get("question_style", "application"),
-                "depth_level": q.get("depth_level", "apply"),
-                "solution_steps": q.get("solution_steps", []),
-                "is_active": True,
-            })
-        if q_docs:
-            await questions_col().insert_many(q_docs)
-
-        await upsert_course_intelligence(
-            course_id=course_id,
-            course_title=course_title,
-            topics=data.get("topics", []),
-            key_formulas=data.get("key_formulas", []),
-            key_points=data.get("key_points", []),
-            summary=data.get("summary", ""),
-            formula_cards=data.get("formula_cards", []),
-            profile_data=data.get("profile", {}),
-        )
-        await _update_job(job_id, {
-            "status": "done",
-            "attempt_count": attempt,
-            "completed_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "last_error": None,
-        })
-    except Exception as e:
-        error_text = str(e)
-        job_doc = await pdf_jobs_col().find_one({"_id": ObjectId(job_id)})
-        attempt = int((job_doc or {}).get("attempt_count", 0))
-        if attempt < 3:
-            await _update_job(job_id, {
-                "status": "pending",
-                "attempt_count": attempt,
-                "last_error": error_text,
-                "updated_at": datetime.utcnow(),
-            })
-            await asyncio.sleep(min(2 ** attempt, 5))
-            await _process_pdf_bg(job_id, pdf_id, file_path, course_code, course_title, week_number, course_id)
-            return
-
-        await _update_job(job_id, {
-            "status": "failed",
-            "attempt_count": attempt,
-            "failed_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "last_error": error_text,
-        })
 
 
 @router.get("/{course_id}/questions")

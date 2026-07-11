@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Brain, Sigma, BookOpenText } from "lucide-react";
+import { Brain, Sigma, BookOpenText, Layers } from "lucide-react";
 import { coursesApi, intelligenceApi } from "../api";
+import type { CourseTopic } from "../types";
 import { useAuthStore } from "../store/authStore";
 
 export default function IntelligencePage() {
@@ -63,6 +64,28 @@ export default function IntelligencePage() {
       intelligenceApi.getDeepDive(selectedCourseId).then((r) => r.data),
     enabled: Boolean(selectedCourseId),
   });
+
+  const { data: topics } = useQuery({
+    queryKey: ["intelligence", "topics", selectedCourseId],
+    queryFn: () =>
+      intelligenceApi.getTopics(selectedCourseId).then((r) => r.data),
+    enabled: Boolean(selectedCourseId),
+  });
+
+  const groupedTopics = useMemo(() => {
+    if (!topics) return [];
+    const map = new Map<string, CourseTopic[]>();
+    for (const t of topics) {
+      const group = map.get(t.topic) || [];
+      group.push(t);
+      map.set(t.topic, group);
+    }
+    return Array.from(map.entries()).sort(([, a], [, b]) =>
+      // Sort groups by highest importance weight descending
+      Math.max(...b.map((t) => t.importance_weight)) -
+      Math.max(...a.map((t) => t.importance_weight))
+    );
+  }, [topics]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -197,13 +220,103 @@ export default function IntelligencePage() {
 
           <div className="card p-5">
             <div className="flex items-center gap-2 mb-3">
+              <Layers size={16} className="text-cream-200/60" />
+              <h3 className="text-cream-200/80 text-sm font-semibold">
+                Topics
+              </h3>
+            </div>
+            {groupedTopics.length > 0 ? (
+              <div className="space-y-3 max-h-72 overflow-y-auto overscroll-contain pr-1">
+                {groupedTopics.map(([topicName, subtopics]) => {
+                  const maxWeight = Math.max(
+                    ...subtopics.map((t) => t.importance_weight),
+                  );
+                  const weightLabel =
+                    maxWeight >= 4
+                      ? "High"
+                      : maxWeight >= 2.5
+                        ? "Medium"
+                        : "Low";
+                  return (
+                    <details
+                      key={topicName}
+                      className="group rounded-xl border border-cream-200/8 open:border-accent-sky/20 overflow-hidden"
+                    >
+                      <summary className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-cream-200/4 transition-colors list-none">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-1.5 h-1.5 rounded-full bg-accent-sky/40 shrink-0" />
+                          <span className="text-cream-200/85 text-sm font-semibold truncate">
+                            {topicName}
+                          </span>
+                          <span className="text-cream-200/30 text-[11px] shrink-0">
+                            {subtopics.length}{" "}
+                            {subtopics.length === 1 ? "subtopic" : "subtopics"}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
+                            weightLabel === "High"
+                              ? "bg-amber-500/12 text-amber-300/70"
+                              : weightLabel === "Medium"
+                                ? "bg-accent-sky/10 text-accent-sky/60"
+                                : "bg-cream-200/6 text-cream-200/40"
+                          }`}
+                        >
+                          {weightLabel}
+                        </span>
+                      </summary>
+                      <div className="border-t border-cream-200/6 divide-y divide-cream-200/6">
+                        {subtopics.map((st) => (
+                          <div key={st.id} className="px-3 py-2.5 space-y-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-cream-200/80 text-xs font-medium">
+                                {st.subtopic}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {Array.from(
+                                  { length: Math.round(st.importance_weight) },
+                                  (_, i) => (
+                                    <div
+                                      key={i}
+                                      className="w-1 h-1 rounded-full bg-accent-sky/50"
+                                    />
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                            {st.learning_outcome && (
+                              <p className="text-cream-200/45 text-[11px] leading-relaxed">
+                                {st.learning_outcome}
+                              </p>
+                            )}
+                            {st.source && (
+                              <div className="text-cream-200/20 text-[10px]">
+                                {st.source}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-cream-200/35 text-sm">
+                No topics extracted yet. Upload more PDFs for this course.
+              </p>
+            )}
+          </div>
+
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-3">
               <Sigma size={16} className="text-cream-200/60" />
               <h3 className="text-cream-200/80 text-sm font-semibold">
                 Formulas
               </h3>
             </div>
             {formulas && formulas.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-72 overflow-y-auto overscroll-contain pr-1">
                 {formulas.map((f) => (
                   <div
                     key={f.id}
@@ -241,7 +354,7 @@ export default function IntelligencePage() {
               </h3>
             </div>
             {notes && notes.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-72 overflow-y-auto overscroll-contain pr-1">
                 {notes.map((n) => (
                   <div
                     key={n.id}

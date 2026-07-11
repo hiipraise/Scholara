@@ -80,6 +80,26 @@ async def get_progress(current_user: dict = Depends(get_current_user)):
         {"level": level, "semester": semester, "is_active": True}
     ).to_list(None)
 
+    # Single aggregation: question counts per week per course
+    course_ids = [str(c["_id"]) for c in courses]
+    counts_pipeline = [
+        {"$match": {"course_id": {"$in": course_ids}, "is_active": True}},
+        {"$group": {
+            "_id": {"course_id": "$course_id", "week_number": "$week_number"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    counts_docs = await questions_col().aggregate(counts_pipeline).to_list(None)
+
+    # Build lookup: {course_id: {week_number: count}}
+    counts_by_course: dict[str, dict[int, int]] = {}
+    for doc in counts_docs:
+        cid = doc["_id"]["course_id"]
+        wn = doc["_id"]["week_number"]
+        if cid not in counts_by_course:
+            counts_by_course[cid] = {}
+        counts_by_course[cid][wn] = doc["count"]
+
     result = []
     for c in courses:
         cid = str(c["_id"])
@@ -103,6 +123,7 @@ async def get_progress(current_user: dict = Depends(get_current_user)):
             "current_academic_week": current_week,
             "unlocked_week": unlocked,
             "weeks_done": weeks_done,
+            "question_counts": counts_by_course.get(cid, {}),
         })
 
     return {"current_academic_week": current_week, "courses": result}
@@ -243,12 +264,35 @@ async def progress_history(
     today = date.today()
     start = today - timedelta(days=days - 1)
 
-    dates = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    date_range = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+
+    # Single aggregation: group by feed_date in one pass
+    pipeline = [
+        {"$match": {
+            "user_id": uid,
+            "feed_date": {"$gte": date_range[0], "$lte": date_range[-1]},
+            "question_id": {"$in": qids},
+        }},
+        {"$group": {
+            "_id": "$feed_date",
+            "total": {"$sum": 1},
+            "correct": {"$sum": {"$cond": ["$is_correct", 1, 0]}},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+
+    grouped = await attempts_col().aggregate(pipeline).to_list(None)
+    by_date = {g["_id"]: g for g in grouped}
+
     history = []
-    for d in dates:
-        base = {"user_id": uid, "feed_date": d, "question_id": {"$in": qids}}
-        total = await attempts_col().count_documents(base)
-        correct = await attempts_col().count_documents({**base, "is_correct": True})
+    for d in date_range:
+        g = by_date.get(d)
+        if g:
+            total = g["total"]
+            correct = g["correct"]
+        else:
+            total = 0
+            correct = 0
         history.append({
             "date": d,
             "attempted": total,

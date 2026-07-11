@@ -8,17 +8,18 @@ import {
   Edit2,
   Save,
   X,
-  ArrowRight,
   Shield,
   GraduationCap,
   Check,
   Eye,
   EyeOff,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { setTokens } from "../api/client";
 import { authApi } from "../api/auth";
 import { usersApi } from "../api/index";
+import { validatePasswordStrength } from "../utils/password";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 
@@ -38,6 +39,7 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
 
   const nameMutation = useMutation({
     mutationFn: (name: string) => usersApi.updateProfile({ full_name: name }),
@@ -89,16 +91,6 @@ export default function ProfilePage() {
     onError: (e: any) =>
       toast.error(e.response?.data?.detail || "Failed to update password"),
   });
-
-  function validatePasswordStrength(pw: string): string[] {
-    const errors: string[] = [];
-    if (pw.length < 8) errors.push("At least 8 characters");
-    if (!/[A-Z]/.test(pw)) errors.push("One uppercase letter");
-    if (!/[a-z]/.test(pw)) errors.push("One lowercase letter");
-    if (!/[0-9]/.test(pw)) errors.push("One digit");
-    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(pw)) errors.push("One special character");
-    return errors;
-  }
 
   function canSubmitPassword(): boolean {
     if (!oldPassword || !newPassword || !confirmPassword) return false;
@@ -446,7 +438,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => {
                   if (passwordMutation.isPending) return;
-                  passwordMutation.mutate();
+                  setShowPasswordConfirm(true);
                 }}
                 disabled={!canSubmitPassword() || passwordMutation.isPending}
                 className="flex items-center gap-1.5 text-accent-sage text-xs hover:opacity-80 disabled:opacity-40"
@@ -582,7 +574,7 @@ export default function ProfilePage() {
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    onClick={() => passwordMutation.mutate()}
+                    onClick={() => setShowPasswordConfirm(true)}
                     disabled={!canSubmitPassword() || passwordMutation.isPending}
                     className="btn-primary text-sm flex items-center gap-2"
                   >
@@ -613,6 +605,67 @@ export default function ProfilePage() {
         </AnimatePresence>
       </motion.div>
 
+      {/* Password change confirmation modal */}
+      <AnimatePresence>
+        {showPasswordConfirm && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+              onClick={() => setShowPasswordConfirm(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md card p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-accent-gold/15 p-2.5 shrink-0">
+                    <AlertTriangle size={20} className="text-accent-gold" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-display text-lg text-cream-200">
+                      Change password?
+                    </h4>
+                    <p className="text-cream-200/55 text-sm mt-2">
+                      You will be signed out after changing your password.
+                      Make sure you remember your new password before
+                      proceeding.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    className="btn-ghost text-sm"
+                    onClick={() => setShowPasswordConfirm(false)}
+                    disabled={passwordMutation.isPending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary text-sm flex items-center gap-2"
+                    onClick={() => {
+                      setShowPasswordConfirm(false);
+                      passwordMutation.mutate();
+                    }}
+                    disabled={passwordMutation.isPending}
+                  >
+                    <Lock size={13} />
+                    {passwordMutation.isPending
+                      ? "Changing..."
+                      : "Change Password"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Account info grid */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -629,7 +682,7 @@ export default function ProfilePage() {
             { label: "Level", value: user?.level },
             { label: "Semester", value: `Semester ${user?.semester}` },
             { label: "Status", value: user?.is_active ? "Active" : "Inactive" },
-            { label: "Programme", value: "BSc. Software Engineering" },
+            { label: "Program", value: "BSc. Software Engineering" },
             { label: "AI Engine", value: "Nexus Core v2.0" },
           ].map(({ label, value }) => (
             <div key={label} className="bg-cream-200/4 rounded-xl p-3">

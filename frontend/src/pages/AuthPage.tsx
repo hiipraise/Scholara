@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import clsx from 'clsx';
@@ -37,7 +37,7 @@ export default function AuthPage() {
       }
       navigate('/');
     } catch (err: any) {
-      const msg = err.response?.data?.detail || (mode === 'signup' ? 'Signup failed.' : 'Sign-in failed.');
+      const msg = err.response?.data?.detail || (mode === 'signup' ? 'Sign up failed.' : 'Sign in failed.');
       toast.error(msg);
     }
   }
@@ -211,10 +211,14 @@ export default function AuthPage() {
                   whileTap={{ scale: 0.98 }}
                   className="mt-2 min-h-12 w-full rounded-xl border border-cream-200/20 bg-cream-200 px-6 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-indigo-700 transition hover:bg-cream-100 focus:outline-none focus:ring-2 focus:ring-cream-200/60 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isLoading
-                    ? (mode === 'signup' ? 'Creating account...' : 'Signing in...')
-                    : (mode === 'signup' ? 'Create Account' : 'Sign In')
-                  }
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      {mode === 'signup' ? 'Creating account...' : 'Signing in...'}
+                    </span>
+                  ) : (
+                    mode === 'signup' ? 'Create Account' : 'Sign In'
+                  )}
                 </motion.button>
               </form>
 

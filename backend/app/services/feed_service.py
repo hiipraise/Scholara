@@ -279,7 +279,20 @@ async def get_or_create_daily_feed(user: dict) -> dict:
     return await _feed_response(feed, user_id)
 
 
-async def _feed_response(feed: dict, user_id: str) -> dict:
+async def _feed_response(feed: dict | None, user_id: str) -> dict:
+    if feed is None:
+        return {
+            "feed_date": date.today().isoformat(),
+            "questions": [],
+            "total": 0,
+            "completed_count": 0,
+            "correct_count": 0,
+            "accuracy_pct": 0,
+            "is_fully_completed": False,
+            "progress_pct": 0,
+            "batch_number": 1,
+            "can_refresh": False,
+        }
     qids = feed.get("question_ids", [])
     completed = set(feed.get("completed_ids", []))
 
@@ -321,7 +334,7 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
         "question_id",
         {
             "user_id": user_id,
-            "feed_date": feed["feed_date"],
+            "feed_date": feed.get("feed_date", ""),
             "question_id": {"$in": qids},
             "is_correct": True,
         },
@@ -329,7 +342,7 @@ async def _feed_response(feed: dict, user_id: str) -> dict:
     correct_count = len(set(correct_ids) & set(qids))
     completed_count = min(done_count, total)
     return {
-        "feed_date": feed["feed_date"],
+        "feed_date": feed.get("feed_date", ""),
         "questions": questions,
         "total": total,
         "completed_count": completed_count,

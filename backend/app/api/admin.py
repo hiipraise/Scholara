@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from bson import ObjectId
 from datetime import datetime, date
+import math
 import logging
 
 from app.core.deps import get_current_user, get_admin_user, get_superadmin_user
@@ -10,6 +11,7 @@ from app.core.database import (
     exams_col, cycles_col, calendars_col,
     users_col, courses_col, questions_col, question_flags_col, pdf_jobs_col, audit_logs_col,
 )
+from app.services.audit_service import log_audit
 
 logger = logging.getLogger(__name__)
 from app.core.database import model_feedback_col
@@ -72,12 +74,25 @@ async def get_exam_timetable(
 @router.post("/exam-timetable")
 async def create_exam_slot(body: ExamSlotIn, admin: dict = Depends(get_admin_user)):
     result = await exams_col().insert_one({**body.dict(), "created_at": datetime.utcnow()})
-    return {"id": str(result.inserted_id), "message": "Exam slot created"}
+    slot_id = str(result.inserted_id)
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="exam.create", target_type="exam_slot", target_id=slot_id,
+        details={"course_id": body.course_id, "exam_date": body.exam_date, "level": body.level, "semester": body.semester},
+    )
+    return {"id": slot_id, "message": "Exam slot created"}
 
 
 @router.delete("/exam-timetable/{slot_id}")
 async def delete_exam_slot(slot_id: str, admin: dict = Depends(get_admin_user)):
+    # Fetch before delete to capture details for audit
+    slot = await exams_col().find_one({"_id": ObjectId(slot_id)})
     await exams_col().delete_one({"_id": ObjectId(slot_id)})
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="exam.delete", target_type="exam_slot", target_id=slot_id,
+        details={"course_id": slot.get("course_id") if slot else None, "exam_date": slot.get("exam_date") if slot else None} if slot else None,
+    )
     return {"message": "Slot deleted"}
 
 
@@ -138,6 +153,11 @@ async def update_study_cycle(body: StudyCycleIn, admin: dict = Depends(get_admin
             }
             for d in body.days
         ])
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="study_cycle.update", target_type="study_cycle",
+        details={"level": body.level, "semester": body.semester, "day_count": len(body.days)},
+    )
     return {"message": f"Study cycle updated ({len(body.days)} days)"}
 
 
@@ -172,6 +192,11 @@ async def create_calendar(body: CalendarIn, admin: dict = Depends(get_admin_user
         {"$set": {**body.dict(), "is_active": active, "created_at": datetime.utcnow()}},
         upsert=True,
     )
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="calendar.create", target_type="calendar",
+        details={"level": body.level, "semester": body.semester, "resume_date": body.school_resume_date, "end_date": end_date},
+    )
     return {"message": "Calendar saved"}
 
 
@@ -189,14 +214,26 @@ async def update_calendar(
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Calendar entry not found")
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="calendar.update", target_type="calendar", target_id=calendar_id,
+        details={"resume_date": body.school_resume_date, "end_date": end_date},
+    )
     return {"message": "Calendar updated"}
 
 
 @router.delete("/calendar/{calendar_id}")
 async def delete_calendar(calendar_id: str, admin: dict = Depends(get_admin_user)):
+    # Fetch before delete for audit details
+    cal = await calendars_col().find_one({"_id": ObjectId(calendar_id)})
     result = await calendars_col().delete_one({"_id": ObjectId(calendar_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Calendar entry not found")
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="calendar.delete", target_type="calendar", target_id=calendar_id,
+        details={"level": cal.get("level") if cal else None, "semester": cal.get("semester") if cal else None} if cal else None,
+    )
     return {"message": "Calendar deleted"}
 
 
@@ -244,15 +281,42 @@ async def list_jobs(admin: dict = Depends(get_admin_user)):
 
 
 @router.get("/audit-logs")
-async def list_audit_logs(admin: dict = Depends(get_superadmin_user)):
-    docs = await audit_logs_col().find({}).sort("timestamp", -1).limit(100).to_list(100)
-    return [_audit(doc) for doc in docs]
+async def list_audit_logs(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=200),
+    admin: dict = Depends(get_superadmin_user),
+):
+    skip = (page - 1) * size
+    total = await audit_logs_col().count_documents({})
+    docs = (
+        await audit_logs_col()
+        .find({})
+        .sort("timestamp", -1)
+        .skip(skip)
+        .limit(size)
+        .to_list(size)
+    )
+    return {
+        "items": [_audit(doc) for doc in docs],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": math.ceil(total / size) if total else 0,
+    }
 
 
 @router.get("/question-flags")
-async def list_question_flags(status: str = "open", admin: dict = Depends(get_admin_user)):
+async def list_question_flags(
+    status: str = "open",
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=200),
+    admin: dict = Depends(get_admin_user),
+):
     match = {} if status == "all" else {"status": status}
-    grouped = await question_flags_col().aggregate([
+    skip = (page - 1) * size
+
+    # Use $facet to get paginated results + total count in one aggregation
+    facet_result = await question_flags_col().aggregate([
         {"$match": match},
         {
             "$group": {
@@ -266,7 +330,21 @@ async def list_question_flags(status: str = "open", admin: dict = Depends(get_ad
             }
         },
         {"$sort": {"latest_flagged_at": -1}},
+        {
+            "$facet": {
+                "paginated": [
+                    {"$skip": skip},
+                    {"$limit": size},
+                ],
+                "total": [
+                    {"$count": "count"},
+                ],
+            }
+        },
     ]).to_list(None)
+
+    grouped = facet_result[0]["paginated"] if facet_result else []
+    total_count = facet_result[0]["total"][0]["count"] if facet_result and facet_result[0]["total"] else 0
 
     out = []
     for item in grouped:
@@ -284,7 +362,6 @@ async def list_question_flags(status: str = "open", admin: dict = Depends(get_ad
             "flag_count": item.get("flag_count", 0),
             "latest_flagged_at": _iso(item.get("latest_flagged_at")),
             "reasons": [r for r in item.get("reasons", []) if r],
-            "reporters": [r for r in item.get("reporters", []) if r],
             "status": "open" if "open" in item.get("statuses", []) else "resolved",
             "course_id": course_id,
             "course_code": course.get("code") if course else "—",
@@ -293,7 +370,14 @@ async def list_question_flags(status: str = "open", admin: dict = Depends(get_ad
             "week_number": question.get("week_number") if question else None,
             "is_active": question.get("is_active", False) if question else False,
         })
-    return out
+
+    return {
+        "items": out,
+        "total": total_count,
+        "page": page,
+        "size": size,
+        "pages": math.ceil(total_count / size) if total_count else 0,
+    }
 
 
 @router.patch("/question-flags/{question_id}/resolve")
@@ -332,6 +416,13 @@ async def resolve_question_flags(
             }, "$setOnInsert": {"created_at": now}},
         )
 
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="flag.resolve", target_type="question", target_id=question_id,
+        details={"resolved_count": result.modified_count, "deactivated": body.deactivate_question,
+                  "course_id": question.get("course_id") if question else None},
+    )
+
     return {
         "ok": True,
         "question_id": question_id,
@@ -350,6 +441,11 @@ async def resolve_all_question_flags(
     valid_qids = [qid for qid in open_qids if isinstance(qid, str) and ObjectId.is_valid(qid)]
 
     if not valid_qids:
+        await log_audit(
+            actor_id=admin["id"], actor_email=admin.get("email", ""),
+            action="flag.resolve_all", target_type="question",
+            details={"resolved_count": 0, "deactivated": body.deactivate_question},
+        )
         return {
             "ok": True,
             "resolved_count": 0,
@@ -387,6 +483,13 @@ async def resolve_all_question_flags(
         }},
     )
 
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="flag.resolve_all", target_type="question",
+        details={"resolved_count": result.modified_count, "questions_touched": len(valid_qids),
+                  "deactivated_count": deactivated_count, "deactivated": body.deactivate_question},
+    )
+
     return {
         "ok": True,
         "resolved_count": result.modified_count,
@@ -411,9 +514,16 @@ async def list_model_feedback(status: str = "pending", admin: dict = Depends(get
 @router.patch("/model-feedback/{feedback_id}/process")
 async def process_model_feedback(feedback_id: str, action: str = "archive", admin: dict = Depends(get_admin_user)):
     # action: archive|escalate|apply
+    # Fetch feedback before update for audit details
+    fb = await model_feedback_col().find_one({"_id": ObjectId(feedback_id)}, {"question_id": 1, "status": 1})
     result = await model_feedback_col().update_one({"_id": ObjectId(feedback_id)}, {"$set": {"status": action, "processed_at": datetime.utcnow(), "processed_by": admin["id"]}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Feedback item not found")
+    await log_audit(
+        actor_id=admin["id"], actor_email=admin.get("email", ""),
+        action="feedback.process", target_type="feedback", target_id=feedback_id,
+        details={"previous_status": fb.get("status") if fb else None, "new_status": action, "question_id": fb.get("question_id") if fb else None},
+    )
     return {"ok": True, "feedback_id": feedback_id, "action": action}
 
 # ── Users (SuperAdmin only) ────────────────────────────────────────────────
@@ -431,9 +541,28 @@ class RoleUpdateIn(BaseModel):
 
 
 @router.get("/users")
-async def list_users(superadmin: dict = Depends(get_superadmin_user)):
-    docs = await users_col().find({}).sort("created_at", -1).to_list(None)
-    return [_s(d) for d in docs]
+async def list_users(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=200),
+    superadmin: dict = Depends(get_superadmin_user),
+):
+    skip = (page - 1) * size
+    total = await users_col().count_documents({})
+    docs = (
+        await users_col()
+        .find({})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(size)
+        .to_list(size)
+    )
+    return {
+        "items": [_s(d) for d in docs],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": math.ceil(total / size) if total else 0,
+    }
 
 
 @router.post("/users")
@@ -443,7 +572,13 @@ async def create_user(body: UserCreateIn, superadmin: dict = Depends(get_superad
         raise HTTPException(status_code=400, detail="User already exists")
     doc = {**body.dict(), "email": email, "is_active": True, "created_at": datetime.utcnow()}
     result = await users_col().insert_one(doc)
-    return {"id": str(result.inserted_id), "email": email}
+    user_id = str(result.inserted_id)
+    await log_audit(
+        actor_id=superadmin["id"], actor_email=superadmin.get("email", ""),
+        action="user.create", target_type="user", target_id=user_id,
+        details={"email": email, "role": body.role, "level": body.level, "semester": body.semester},
+    )
+    return {"id": user_id, "email": email}
 
 
 @router.put("/users/{user_id}/role")
@@ -452,7 +587,15 @@ async def update_role(
     body: RoleUpdateIn,
     superadmin: dict = Depends(get_superadmin_user),
 ):
+    # Fetch old role for audit
+    user = await users_col().find_one({"_id": ObjectId(user_id)}, {"role": 1, "email": 1})
+    old_role = user.get("role") if user else None
     await users_col().update_one({"_id": ObjectId(user_id)}, {"$set": {"role": body.role}})
+    await log_audit(
+        actor_id=superadmin["id"], actor_email=superadmin.get("email", ""),
+        action="user.role_change", target_type="user", target_id=user_id,
+        details={"user_email": user.get("email") if user else None, "from": old_role, "to": body.role},
+    )
     return {"message": f"Role updated to {body.role}"}
 
 
@@ -463,9 +606,17 @@ async def update_level(
     semester: int,
     superadmin: dict = Depends(get_superadmin_user),
 ):
+    # Fetch old level for audit
+    user = await users_col().find_one({"_id": ObjectId(user_id)}, {"level": 1, "semester": 1, "email": 1})
+    old_level = f"{user.get('level')} Semester {user.get('semester')}" if user else None
     await users_col().update_one(
         {"_id": ObjectId(user_id)},
         {"$set": {"level": level, "semester": semester}},
+    )
+    await log_audit(
+        actor_id=superadmin["id"], actor_email=superadmin.get("email", ""),
+        action="user.level_change", target_type="user", target_id=user_id,
+        details={"user_email": user.get("email") if user else None, "from": old_level, "to": f"{level} Semester {semester}"},
     )
     return {"message": f"Level updated to {level} Semester {semester}"}
 
@@ -500,6 +651,12 @@ async def reset_user_password(
 
     logger.info(f"Password reset for {user.get('email')} by superadmin {superadmin['email']}")
 
+    await log_audit(
+        actor_id=superadmin["id"], actor_email=superadmin.get("email", ""),
+        action="user.password_reset", target_type="user", target_id=user_id,
+        details={"user_email": user.get("email")},
+    )
+
     return {
         "message": "Password reset successfully. Share the new password securely.",
         "user_id": user_id,
@@ -514,4 +671,9 @@ async def deactivate_user(
 ):
     user = await users_col().find_one({"_id": ObjectId(user_id)})
     await users_col().update_one({"_id": ObjectId(user_id)}, {"$set": {"is_active": False}})
+    await log_audit(
+        actor_id=superadmin["id"], actor_email=superadmin.get("email", ""),
+        action="user.deactivate", target_type="user", target_id=user_id,
+        details={"user_email": user.get("email") if user else None},
+    )
     return {"message": "User deactivated"}

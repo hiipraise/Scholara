@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Lock, Eye, EyeOff, Check, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { validatePasswordStrength } from "../utils/password";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 
@@ -16,17 +17,6 @@ export default function ForcePasswordChange() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function validatePasswordStrength(pw: string): string[] {
-    const errors: string[] = [];
-    if (pw.length < 8) errors.push("At least 8 characters");
-    if (!/[A-Z]/.test(pw)) errors.push("One uppercase letter");
-    if (!/[a-z]/.test(pw)) errors.push("One lowercase letter");
-    if (!/[0-9]/.test(pw)) errors.push("One digit");
-    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(pw))
-      errors.push("One special character");
-    return errors;
-  }
 
   function canSubmit(): boolean {
     if (!oldPassword || !newPassword || !confirmPassword) return false;

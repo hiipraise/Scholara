@@ -8,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from datetime import date
 from typing import Optional
 from bson import ObjectId
-from app.core.security import decode_token
+from app.core.security import decode_token, is_token_blacklisted
 from app.core.database import users_col, calendars_col
 import logging
 
@@ -95,6 +95,14 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # ── Token blacklist check (password changes, email changes, etc.) ──
+    if await is_token_blacklisted(payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please sign in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

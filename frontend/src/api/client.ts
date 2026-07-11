@@ -119,7 +119,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
       // ── Don't attempt refresh on auth endpoints — 401 means wrong      ──
       // ── credentials, not an expired session.                            ──
       const url = originalRequest.url || '';
@@ -189,14 +189,6 @@ apiClient.interceptors.response.use(
         return Promise.reject(err);
       } finally {
         isRefreshing = false;
-      }
-    }
-
-    if (error.response?.status === 403) {
-      clearTokens();
-      _onUnauthorized?.();
-      if (typeof window !== "undefined" && window.location.pathname !== AUTH_PATH) {
-        window.location.href = AUTH_PATH;
       }
     }
 

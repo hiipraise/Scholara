@@ -4,6 +4,7 @@ from datetime import datetime
 from bson import ObjectId
 from app.core.deps import get_current_user
 from app.core.database import questions_col, question_flags_col, model_feedback_col
+from app.services.audit_service import log_audit
 
 router = APIRouter()
 
@@ -70,4 +71,32 @@ async def flag_question(
     except Exception:
         # non-fatal — feedback queue best-effort
         pass
+    await log_audit(
+        actor_id=current_user["id"], actor_email=current_user.get("email", ""),
+        action="flag.create", target_type="question", target_id=question_id,
+        details={"reason": body.reason, "course_id": question.get("course_id")},
+    )
+
     return {"ok": True, "question_id": question_id, "flagged": True}
+
+
+@router.delete("/{question_id}/flag")
+async def unflag_question(
+    question_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Remove the current user's flag from a question."""
+    result = await question_flags_col().delete_one(
+        {"user_id": current_user["id"], "question_id": question_id},
+    )
+    await log_audit(
+        actor_id=current_user["id"], actor_email=current_user.get("email", ""),
+        action="flag.delete", target_type="question", target_id=question_id,
+        details={"removed": result.deleted_count > 0},
+    )
+    return {
+        "ok": True,
+        "question_id": question_id,
+        "flagged": False,
+        "removed": result.deleted_count > 0,
+    }

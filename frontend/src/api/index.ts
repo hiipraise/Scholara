@@ -19,6 +19,7 @@ import type {
   CourseDeepDiveNote,
   PdfJobSummary,
   AuditLogEntry,
+  PaginatedResponse,
 } from "../types";
 
 // Feed
@@ -103,8 +104,15 @@ export const adminApi = {
     apiClient.get<ExamSlot[]>("/admin/exam-timetable", {
       params: { level, semester, include_past: includePast },
     }),
-  createExamSlot: (data: unknown) =>
-    apiClient.post("/admin/exam-timetable", data),
+  createExamSlot: (data: {
+    course_id: string;
+    exam_date: string;
+    start_time: string;
+    end_time: string;
+    venue: string;
+    level: string;
+    semester: number;
+  }) => apiClient.post("/admin/exam-timetable", data),
   deleteExamSlot: (id: string) =>
     apiClient.delete(`/admin/exam-timetable/${id}`),
 
@@ -120,12 +128,21 @@ export const adminApi = {
     apiClient.put("/admin/study-cycle", { level, semester, days }),
 
   getCalendars: () => apiClient.get<AcademicCalendar[]>("/admin/calendar"),
-  createCalendar: (data: unknown) => apiClient.post("/admin/calendar", data),
+  createCalendar: (data: {
+    level: string;
+    semester: number;
+    school_resume_date: string;
+    lectures_start_date: string;
+    semester_end_date: string;
+  }) => apiClient.post("/admin/calendar", data),
   updateCalendar: (id: string, data: unknown) =>
     apiClient.put(`/admin/calendar/${id}`, data),
   deleteCalendar: (id: string) => apiClient.delete(`/admin/calendar/${id}`),
 
-  listUsers: () => apiClient.get<User[]>("/admin/users"),
+  listUsers: (page = 1, size = 200) =>
+    apiClient.get<PaginatedResponse<User>>("/admin/users", {
+      params: { page, size },
+    }),
   createUser: (data: unknown) => apiClient.post("/admin/users", data),
   updateUserRole: (userId: string, role: string) =>
     apiClient.put(`/admin/users/${userId}/role`, { role }),
@@ -140,9 +157,13 @@ export const adminApi = {
       `/admin/users/${userId}/reset-password`,
     ),
 
-  getQuestionFlags: (status: "open" | "resolved" | "all" = "open") =>
-    apiClient.get<QuestionFlag[]>("/admin/question-flags", {
-      params: { status },
+  getQuestionFlags: (
+    status: "open" | "resolved" | "all" = "open",
+    page = 1,
+    size = 200,
+  ) =>
+    apiClient.get<PaginatedResponse<QuestionFlag>>("/admin/question-flags", {
+      params: { status, page, size },
     }),
   resolveQuestionFlags: (questionId: string, deactivate_question = false) =>
     apiClient.patch(`/admin/question-flags/${questionId}/resolve`, {
@@ -154,7 +175,10 @@ export const adminApi = {
     }),
 
   getJobs: () => apiClient.get<PdfJobSummary>("/admin/jobs"),
-  getAuditLogs: () => apiClient.get<AuditLogEntry[]>("/admin/audit-logs"),
+  getAuditLogs: (page = 1, size = 200) =>
+    apiClient.get<PaginatedResponse<AuditLogEntry>>("/admin/audit-logs", {
+      params: { page, size },
+    }),
 };
 
 // Users
@@ -171,6 +195,8 @@ export const usersApi = {
 export const questionsApi = {
   flag: (questionId: string, reason?: string) =>
     apiClient.post(`/questions/${questionId}/flag`, { reason }),
+  unflag: (questionId: string) =>
+    apiClient.delete(`/questions/${questionId}/flag`),
 };
 
 export const intelligenceApi = {

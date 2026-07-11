@@ -17,6 +17,7 @@ from app.core.database import create_indexes, users_col
 from app.api import auth, users, courses, feed, admin, questions, intelligence
 from app.core.rate_limiter import api_rate_limiter
 from app.core.password import hash_password
+from app.services.job_worker import start_worker, stop_worker
 
 # Configure logging
 logging.basicConfig(
@@ -57,7 +58,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
     expose_headers=["X-Rate-Limit-Remaining"],
     max_age=3600,
@@ -92,6 +93,12 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
             "geolocation=(), microphone=(), camera=(), payment=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'; "
+            "form-action 'none'"
         )
 
     # HSTS for production
@@ -151,12 +158,12 @@ app.include_router(questions.router, prefix="/api/questions", tags=["Questions"]
 app.include_router(intelligence.router, prefix="/api/intelligence", tags=["Intelligence"])
 
 # ════════════════════════════════════════════════════════════════════════════
-# STARTUP
+# STARTUP / SHUTDOWN
 # ════════════════════════════════════════════════════════════════════════════
 
 @app.on_event("startup")
 async def startup():
-    """Initialize database indexes and ensure superadmin exists."""
+    """Initialize database indexes, ensure superadmin, start background worker."""
     logger.info("Starting Scholara API...")
 
     try:
@@ -171,7 +178,24 @@ async def startup():
     except Exception as e:
         logger.error(f"Failed to ensure superadmin: {e}")
 
+    # ── Start the MongoDB-backed PDF processing worker ────────────────
+    try:
+        await start_worker(poll_interval=5.0)
+        logger.info("PDF job worker started")
+    except Exception as e:
+        logger.error(f"Failed to start PDF job worker: {e}")
+
     logger.info(f"API running in {settings.APP_ENV} mode")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Gracefully shut down the background worker."""
+    logger.info("Shutting down Scholara API...")
+    try:
+        await stop_worker()
+    except Exception as e:
+        logger.error(f"Error stopping worker: {e}")
 
 
 async def _ensure_superadmin():

@@ -55,17 +55,9 @@ async def seed(*, reset_admin_password: bool = False):
         print(f"SuperAdmin already has a password hash — skipping.")
         print(f"Use --reset-admin-password to force a reset.")
 
-    # ── Database Indexes (idempotent) ───────────────────────────────────────
-    await db.users.create_index("email", unique=True)
-    await db.courses.create_index("code", unique=True)
-    await db.week_progress.create_index(
-        [("user_id", 1), ("course_id", 1), ("week_number", 1)], unique=True)
-    await db.daily_feeds.create_index(
-        [("user_id", 1), ("feed_date", 1)], unique=True)
-    await db.study_cycles.create_index(
-        [("level", 1), ("semester", 1), ("day_number", 1)], unique=True)
-    await db.academic_calendars.create_index(
-        [("level", 1), ("semester", 1)], unique=True)
+    # ── Database Indexes (managed centrally in database.py) ────────────────
+    from app.core.database import create_indexes
+    await create_indexes()
     print("Indexes ensured.")
 
     client.close()
