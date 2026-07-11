@@ -4,9 +4,11 @@ Hardened configuration — every secret comes exclusively from environment varia
 NO hardcoded defaults for secrets, credentials, or keys.
 If a required env var is missing, the app raises a clear error at startup.
 """
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import List
 from pathlib import Path
+import json
 
 
 class Settings(BaseSettings):
@@ -42,11 +44,23 @@ class Settings(BaseSettings):
     SUPERADMIN_LEVEL: str = "100L"          # Optional, default "100L"
     SUPERADMIN_SEMESTER: int = 1            # Optional, default 1
 
-    # ── CORS ───────────────────────────────────────────────────────────────
+    # ── CORS / Host validation ─────────────────────────────────────────────
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
+    TRUSTED_HOSTS: List[str] = []
+
+    @field_validator("ALLOWED_ORIGINS", "TRUSTED_HOSTS", mode="before")
+    @classmethod
+    def parse_csv_or_json_list(cls, value):
+        """Accept either JSON arrays or comma-separated env-var lists."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                return json.loads(stripped)
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
 
     # ── File Upload ────────────────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
