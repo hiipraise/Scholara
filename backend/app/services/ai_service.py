@@ -275,7 +275,7 @@ async def generate_study_cycle(level: str, semester: int, courses: list[dict[str
         return _fallback_study_cycle(normalized_courses)
 
     try:
-        raw = await _call_ai(
+        raw = await call_ai(
             STUDY_CYCLE_PROMPT.format(
                 level=level,
                 semester=semester,
@@ -344,7 +344,7 @@ async def generate_summary(pdf_text: str) -> dict:
         return _mock_summary()
 
     try:
-        raw = await _call_ai(SUMMARY_PROMPT.format(text=truncated), SUMMARY_SYSTEM, 1200)
+        raw = await call_ai(SUMMARY_PROMPT.format(text=truncated), SUMMARY_SYSTEM, 1200)
         return json.loads(_clean_json(raw))
     except Exception as e:
         logger.error(f"Summary generation failed: {e}")
@@ -485,7 +485,7 @@ async def generate_questions(
         )
 
     try:
-        raw = await _call_ai(
+        raw = await call_ai(
             QUESTION_PROMPT.format(
                 count=count,
                 course_code=course_code,
