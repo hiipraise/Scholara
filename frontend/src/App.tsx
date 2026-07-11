@@ -14,6 +14,8 @@ import IntelligencePage from './pages/IntelligencePage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
 import ForcePasswordChange from './pages/ForcePasswordChange';
+import LessonPage from './pages/LessonPage';
+import CourseDetailPage from './pages/CourseDetailPage';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -100,8 +102,10 @@ export default function App() {
           >
             <Route index element={<HomePage />} />
             <Route path="courses" element={<CoursesPage />} />
+            <Route path="courses/:courseId" element={<CourseDetailPage />} />
             <Route path="study" element={<StudyPage />} />
             <Route path="intelligence" element={<IntelligencePage />} />
+            <Route path="courses/:courseId/weeks/:week/learn" element={<LessonPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route
               path="admin"

@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   FileText,
   Loader2,
   Plus,
@@ -14,6 +15,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { coursesApi } from "../../api/index";
 import type { Course, CoursePDF } from "../../types";
@@ -40,6 +42,7 @@ export default function CourseCard({
   color,
   isAdmin,
 }: CourseCardProps) {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -218,6 +221,17 @@ export default function CourseCard({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/courses/${course.id}`);
+            }}
+            className="p-1.5 rounded-lg text-cream-200/25 hover:text-accent-sky hover:bg-accent-sky/10 transition-colors"
+            title="View course details"
+            aria-label="View course details"
+          >
+            <ExternalLink size={14} />
+          </button>
           {isAdmin && (
             <button
               onClick={(e) => {

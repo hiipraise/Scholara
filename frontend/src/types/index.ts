@@ -251,3 +251,46 @@ export interface PaginatedResponse<T> {
   size: number;
   pages: number;
 }
+
+export interface LessonSection {
+  title: string;
+  explanation: string;
+  examples: string[];
+  common_mistakes: string[];
+}
+
+export interface FormulaCard {
+  formula_name: string;
+  expression: string;
+  variables: string[];
+  units: string[];
+  conditions: string;
+  common_mistakes: string[];
+  worked_example: string;
+}
+
+export interface FurtherReading {
+  title: string;
+  url: string;
+  note: string;
+}
+
+export interface Lesson {
+  _id: string;
+  course_id: string;
+  week_number: number;
+  course_code: string;
+  course_title: string;
+  overview: string;
+  sections: LessonSection[];
+  formula_cards: FormulaCard[];
+  key_takeaways: string[];
+  further_reading: FurtherReading[];
+  source: "ai";
+  generated_at: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}

@@ -81,7 +81,7 @@ async def _call_gemini(prompt: str, system: str = "", max_tokens: int = 2000) ->
 
 # ── Unified caller ─────────────────────────────────────────────────────────
 
-async def _call_ai(prompt: str, system: str = "", max_tokens: int = 2000) -> str:
+async def call_ai(prompt: str, system: str = "", max_tokens: int = 2000) -> str:
     provider = settings.AI_PROVIDER.lower()
 
     if provider == "groq":
@@ -95,6 +95,11 @@ async def _call_ai(prompt: str, system: str = "", max_tokens: int = 2000) -> str
         return await _call_gemini(prompt, system, max_tokens)
 
     raise ValueError(f"Unknown AI_PROVIDER '{provider}'. Use 'groq', 'gemini', or 'mock'.")
+
+
+def clean_json(raw: str) -> str:
+    """Backward-compatible alias."""
+    return _clean_json(raw)
 
 
 def _clean_json(raw: str) -> str:
@@ -663,14 +668,15 @@ async def process_pdf_file(
     )
 
     return {
-        "text_length":  len(text),
-        "summary":      summary_data.get("summary", ""),
-        "key_points":   summary_data.get("key_points", []),
-        "key_formulas": summary_data.get("key_formulas", []),
+        "text_length":   len(text),
+        "extracted_text": text,
+        "summary":       summary_data.get("summary", ""),
+        "key_points":    summary_data.get("key_points", []),
+        "key_formulas":  summary_data.get("key_formulas", []),
         "formula_cards": summary_data.get("formula_cards", []),
-        "topics":       summary_data.get("topics", []),
-        "questions":    questions,
-        "profile":      summary_data.get("profile") or inferred_profile,
+        "topics":        summary_data.get("topics", []),
+        "questions":     questions,
+        "profile":       summary_data.get("profile") or inferred_profile,
     }
 
 

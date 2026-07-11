@@ -105,6 +105,10 @@ class Settings(BaseSettings):
         if self.APP_ENV == "production":
             if not self.MONGODB_URL or self.MONGODB_URL == "mongodb://localhost:27017":
                 missing.append("MONGODB_URL (must be set for production)")
+            if self.AI_PROVIDER.lower() == "mock" or self.ALLOW_MOCK_QUESTION_GENERATION:
+                missing.append(
+                    "AI_PROVIDER/ALLOW_MOCK_QUESTION_GENERATION (mock mode is not allowed in production)"
+                )
 
         if missing:
             raise ValueError(

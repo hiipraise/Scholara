@@ -98,6 +98,11 @@ def _normalize_duckduckgo_url(url: str) -> str:
     return url
 
 
+# Public alias for cross-module use (e.g. lesson_service.py)
+async def duckduckgo_search(query: str, limit: int = 3) -> list[dict[str, str]]:
+    return await _duckduckgo_search(query, limit)
+
+
 async def _duckduckgo_search(query: str, limit: int = 3) -> list[dict[str, str]]:
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     async with httpx.AsyncClient(timeout=20, headers=headers, follow_redirects=True) as client:

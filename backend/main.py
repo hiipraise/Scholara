@@ -14,7 +14,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import create_indexes, users_col
-from app.api import auth, users, courses, feed, admin, questions, intelligence
+from app.api import auth, users, courses, feed, admin, questions, intelligence, lessons
 from app.core.rate_limiter import api_rate_limiter
 from app.core.password import hash_password
 from app.services.job_worker import start_worker, stop_worker
@@ -167,6 +167,7 @@ app.include_router(feed.router,      prefix="/api/feed",      tags=["Feed"])
 app.include_router(admin.router,     prefix="/api/admin",     tags=["Admin"])
 app.include_router(questions.router, prefix="/api/questions", tags=["Questions"])
 app.include_router(intelligence.router, prefix="/api/intelligence", tags=["Intelligence"])
+app.include_router(lessons.router,      prefix="/api/courses",    tags=["Lessons"])
 
 # ════════════════════════════════════════════════════════════════════════════
 # STARTUP / SHUTDOWN

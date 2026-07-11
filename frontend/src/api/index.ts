@@ -20,6 +20,7 @@ import type {
   PdfJobSummary,
   AuditLogEntry,
   PaginatedResponse,
+  Lesson,
 } from "../types";
 
 // Feed
@@ -197,6 +198,23 @@ export const questionsApi = {
     apiClient.post(`/questions/${questionId}/flag`, { reason }),
   unflag: (questionId: string) =>
     apiClient.delete(`/questions/${questionId}/flag`),
+};
+
+export const lessonApi = {
+  get: (courseId: string, week: number) =>
+    apiClient.get<Lesson>(`/courses/${courseId}/weeks/${week}/lesson`),
+  regenerate: (courseId: string, week: number) =>
+    apiClient.post<Lesson>(`/courses/${courseId}/weeks/${week}/lesson/regenerate`),
+  chat: (
+    courseId: string,
+    week: number,
+    message: string,
+    history: { role: string; content: string }[],
+  ) =>
+    apiClient.post<{ reply: string }>(
+      `/courses/${courseId}/weeks/${week}/lesson/chat`,
+      { message, history },
+    ),
 };
 
 export const intelligenceApi = {

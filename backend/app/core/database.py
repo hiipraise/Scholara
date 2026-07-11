@@ -38,6 +38,8 @@ def pdf_jobs_col():    return col("pdf_jobs")
 def audit_logs_col():  return col("audit_log")
 def token_blacklist_col(): return col("token_blacklist")
 
+def lessons_col():    return col("course_lessons")
+
 async def create_indexes():
     db = get_db()
     await db.users.create_index("email", unique=True)

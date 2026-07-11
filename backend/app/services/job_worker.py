@@ -104,6 +104,7 @@ async def _process_pdf_bg(
                 "summary": data["summary"],
                 "key_points": data["key_points"],
                 "key_formulas": data["key_formulas"],
+                "extracted_text": data.get("extracted_text", ""),
                 "is_processed": True,
             }},
         )
