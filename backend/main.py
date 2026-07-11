@@ -44,13 +44,24 @@ app.router.redirect_slashes = False
 # MIDDLEWARE
 # ════════════════════════════════════════════════════════════════════════════
 
+def _origin_to_host(origin: str) -> str:
+    """Extract a bare hostname from an allowed origin value."""
+    return origin.replace("http://", "").replace("https://", "").split(":")[0].rstrip("/")
+
+
+trusted_hosts = sorted({
+    "localhost",
+    "127.0.0.1",
+    "scholaraapi.onrender.com",
+    "*.onrender.com",
+    *settings.TRUSTED_HOSTS,
+    *[_origin_to_host(origin) for origin in settings.ALLOWED_ORIGINS],
+})
+
 # Trusted Host Middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1"] + (
-        [origin.replace("http://", "").replace("https://", "").split(":")[0]
-         for origin in settings.ALLOWED_ORIGINS]
-    ),
+    allowed_hosts=trusted_hosts,
 )
 
 # CORS Middleware
@@ -59,7 +70,7 @@ app.add_middleware(
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Refresh-Request"],
     expose_headers=["X-Rate-Limit-Remaining"],
     max_age=3600,
 )
