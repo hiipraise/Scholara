@@ -21,3 +21,6 @@ htmlcov/
 .coverage
 *.log
 /seed.py
+
+# Generated report files from admin/cleanup scripts
+scripts/*.json

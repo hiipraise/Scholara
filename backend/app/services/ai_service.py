@@ -98,12 +98,60 @@ async def _call_ai(prompt: str, system: str = "", max_tokens: int = 2000) -> str
 
 
 def _clean_json(raw: str) -> str:
-    """Strip markdown code fences if the model wraps JSON in them."""
+    """Extract the first JSON object/array from a string.
+    Handles markdown code fences, leading/trailing text, and
+    truncated content by finding the outermost JSON structure."""
     raw = raw.strip()
+
+    # Strip markdown code fences first
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
-    return raw.strip()
+    raw = raw.strip()
+
+    # Try direct parse first
+    try:
+        json.loads(raw)
+        return raw
+    except json.JSONDecodeError:
+        pass
+
+    # Find the first { or [ and last } or ]
+    start = -1
+    for i, ch in enumerate(raw):
+        if ch in "{[":
+            start = i
+            break
+
+    if start == -1:
+        return raw  # give up, let the caller handle the error
+
+    # Match the closing bracket
+    open_bracket = raw[start]
+    close_bracket = "}" if open_bracket == "{" else "]"
+    depth = 0
+    end = -1
+    for i in range(start, len(raw)):
+        if raw[i] == open_bracket:
+            depth += 1
+        elif raw[i] == close_bracket:
+            depth -= 1
+        if depth == 0:
+            end = i
+            break
+
+    if end == -1:
+        return raw  # no closing bracket found
+
+    candidate = raw[start:end + 1]
+
+    # Validate the extracted candidate is valid JSON
+    try:
+        json.loads(candidate)
+        return candidate.strip()
+    except json.JSONDecodeError:
+        # Brackets may be inside strings; fall back to original raw
+        return raw.strip()
 
 
 STUDY_CYCLE_SYSTEM = (

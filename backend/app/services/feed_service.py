@@ -326,9 +326,9 @@ async def _feed_response(feed: dict | None, user_id: str) -> dict:
     qids = feed.get("question_ids", [])
     completed = set(feed.get("completed_ids", []))
 
-    # Fetch questions preserving order
+    # Fetch questions preserving order — only active ones
     valid_oids = [ObjectId(x) for x in qids if ObjectId.is_valid(x)]
-    docs = await questions_col().find({"_id": {"$in": valid_oids}}).to_list(None)
+    docs = await questions_col().find({"_id": {"$in": valid_oids}, "is_active": True}).to_list(None)
     qmap = {str(d["_id"]): d for d in docs}
 
     questions = []
