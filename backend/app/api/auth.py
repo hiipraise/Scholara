@@ -68,6 +68,8 @@ def _serialize_user(user: dict) -> dict:
     user["id"] = str(user.pop("_id", ""))
     user.pop("password_hash", None)
     user.pop("created_at", None)
+    if "must_change_password" not in user:
+        user["must_change_password"] = False
     return user
 
 
@@ -275,7 +277,10 @@ async def change_password(
     new_hash = hash_password(body.new_password)
     await col.update_one(
         {"_id": current_user["_id"]},
-        {"$set": {"password_hash": new_hash}}
+        {"$set": {
+            "password_hash": new_hash,
+            "must_change_password": False,
+        }}
     )
 
     logger.info(f"Password changed: {current_user['email']}")

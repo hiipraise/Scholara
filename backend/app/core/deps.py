@@ -113,7 +113,8 @@ async def get_current_user(
         )
 
     user = await _sync_academic_position(user)
-    user["_id"] = str(user["_id"])
+    # Keep _id as ObjectId so downstream MongoDB queries match correctly.
+    # _serialize_user() handles conversion for API responses.
     user["id"] = str(user.get("_id"))
 
     return user

@@ -2,8 +2,13 @@
 Seed script — creates superadmin (from env vars only) and ensures database indexes.
 All courses, exams, calendars, and study cycles are managed via the admin panel.
 NO hardcoded data here.
+
+Usage:
+  python seed.py                          # Normal seed (skips existing admin)
+  python seed.py --reset-admin-password   # Force-reset superadmin password
 """
 import asyncio
+import sys
 from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
@@ -11,7 +16,7 @@ from app.core.password import hash_password
 import secrets
 
 
-async def seed():
+async def seed(*, reset_admin_password: bool = False):
     client = AsyncIOMotorClient(settings.MONGODB_URL)
     db = client[settings.MONGODB_DB]
     now = datetime.utcnow()
@@ -36,15 +41,19 @@ async def seed():
         })
         print(f"SuperAdmin created for {email}")
         print(f"Temporary password: {temp_password} (CHANGE IMMEDIATELY)")
-    elif not existing.get("password_hash"):
+    elif reset_admin_password or not existing.get("password_hash"):
         await db.users.update_one(
             {"email": email},
-            {"$set": {"password_hash": password_hash}},
+            {"$set": {
+                "password_hash": password_hash,
+                "must_change_password": True,
+            }},
         )
-        print(f"SuperAdmin updated with password hash for {email}")
-        print(f"Temporary password: {temp_password} (CHANGE IMMEDIATELY)")
+        print(f"SuperAdmin password reset for {email}")
+        print(f"New temporary password: {temp_password} (CHANGE IMMEDIATELY)")
     else:
         print(f"SuperAdmin already has a password hash — skipping.")
+        print(f"Use --reset-admin-password to force a reset.")
 
     # ── Database Indexes (idempotent) ───────────────────────────────────────
     await db.users.create_index("email", unique=True)
@@ -64,4 +73,5 @@ async def seed():
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    reset = "--reset-admin-password" in sys.argv
+    asyncio.run(seed(reset_admin_password=reset))

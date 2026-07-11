@@ -2,8 +2,9 @@
 import { Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
+import { setOnUnauthorized } from './api/client';
 
 import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
@@ -12,6 +13,7 @@ import StudyPage from './pages/StudyPage';
 import IntelligencePage from './pages/IntelligencePage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
+import ForcePasswordChange from './pages/ForcePasswordChange';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -25,8 +27,11 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  if (user?.must_change_password && window.location.pathname !== "/force-password-change") {
+    return <Navigate to="/force-password-change" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -40,6 +45,18 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { refreshUser, isHydrated } = useAuthStore();
+
+  // Register 401→forceLogout bridge once (synchronous — no API call)
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      // Only show the toast if the user was actively logged in.
+      // Silent auth checks on page load with stale tokens should not scare the user.
+      if (useAuthStore.getState().isAuthenticated) {
+        toast.error("Session expired. Please sign in again.", { duration: 4000 });
+      }
+      useAuthStore.getState().forceLogout();
+    });
+  }, []);
 
   useEffect(() => {
     void refreshUser();
@@ -65,6 +82,14 @@ export default function App() {
           <Suspense fallback={<div className="p-6 text-cream-200/70">Loading view…</div>}>
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
+          <Route
+            path="/force-password-change"
+            element={
+              <ProtectedRoute>
+                <ForcePasswordChange />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/"
             element={

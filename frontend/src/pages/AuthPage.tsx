@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import clsx from 'clsx';
@@ -14,6 +15,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) && normalizedEmail.length <= 254;
@@ -125,17 +127,28 @@ export default function AuthPage() {
                 <label htmlFor="password" className="text-left text-xs uppercase tracking-[0.14em] text-cream-200/60">
                   Password
                 </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'signup' ? 'At least 8 characters, 1 uppercase, 1 digit, 1 special' : 'Your password'}
-                  required
-                  minLength={mode === 'signup' ? 8 : 1}
-                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                  className="min-h-12 w-full rounded-xl border border-cream-200/20 bg-indigo-950/50 px-4 py-3 text-base text-cream-200 outline-none transition focus:border-cream-200/50 focus:ring-2 focus:ring-cream-200/20 sm:text-sm"
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={mode === 'signup' ? 'At least 8 characters, 1 uppercase, 1 digit, 1 special' : 'Your password'}
+                    required
+                    minLength={mode === 'signup' ? 8 : 1}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    className="min-h-12 w-full rounded-xl border border-cream-200/20 bg-indigo-950/50 px-4 py-3 pr-12 text-base text-cream-200 outline-none transition focus:border-cream-200/50 focus:ring-2 focus:ring-cream-200/20 sm:text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-cream-200/30 hover:text-cream-200/60 transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
 
                 {/* Full Name (signup only) */}
                 <AnimatePresence>

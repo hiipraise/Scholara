@@ -21,6 +21,7 @@ interface AuthStore {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   changePassword: (old_password: string, new_password: string) => Promise<void>;
+  forceLogout: () => void;
   updateUser: (partial: Partial<User>) => void;
   setError: (error: string | null) => void;
 }
@@ -129,6 +130,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
       throw err;
     }
+  },
+
+  forceLogout: () => {
+    clearTokens();
+    set({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      isHydrated: true,
+      error: null,
+    });
   },
 
   updateUser: (partial) => {

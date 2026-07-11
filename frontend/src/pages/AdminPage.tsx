@@ -14,6 +14,10 @@ import {
   Shield,
   GraduationCap,
   Flag,
+  KeyRound,
+  Copy,
+  AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import clsx from "clsx";
@@ -409,7 +413,7 @@ function StudyCycleAdmin() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      adminApi.updateStudyCycle(user?.level!, user?.semester!, editDays),
+      adminApi.updateStudyCycle(user?.level || "100L", user?.semester || 1, editDays),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["study-cycle"] });
       setEditing(false);
@@ -1115,6 +1119,11 @@ function UsersAdmin() {
   });
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState("student");
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{
+    email: string;
+    new_password: string;
+  } | null>(null);
 
   const { data: users } = useQuery({
     queryKey: ["admin-users"],
@@ -1159,6 +1168,23 @@ function UsersAdmin() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       toast.success("User deactivated");
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (id: string) => adminApi.resetPassword(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      const found = users?.find((u) => u.id === res.data.user_id);
+      setResetResult({
+        email: found?.email || res.data.user_id,
+        new_password: res.data.new_password,
+      });
+      setResettingUserId(null);
+    },
+    onError: (e: any) => {
+      setResettingUserId(null);
+      toast.error(e.response?.data?.detail || "Failed to reset password");
     },
   });
 
@@ -1289,6 +1315,11 @@ function UsersAdmin() {
               <div className="text-cream-200/25 text-[10px]">
                 {u.level} · Sem {u.semester}
               </div>
+              {u.must_change_password && (
+                <span className="badge border border-accent-gold/25 bg-accent-gold/12 text-accent-gold text-[10px]">
+                  Force reset
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {editingRole === u.id ? (
@@ -1336,6 +1367,14 @@ function UsersAdmin() {
                   >
                     <Edit2 size={12} />
                   </button>
+                  <button
+                    onClick={() => setResettingUserId(u.id)}
+                    disabled={resetPasswordMutation.isPending}
+                    className="p-1.5 rounded-lg text-cream-200/20 hover:text-accent-sky hover:bg-accent-sky/10 transition-colors disabled:opacity-30"
+                    title="Reset password"
+                  >
+                    <KeyRound size={12} />
+                  </button>
                   {u.is_active && (
                     <button
                       onClick={() => deactivateMutation.mutate(u.id)}
@@ -1372,7 +1411,7 @@ function UsersAdmin() {
         </div>
 
         <div className="space-y-2 max-h-[32rem] overflow-auto pr-1">
-          {auditLogs?.length ? (
+          {auditLogs && auditLogs.length > 0 ? (
             auditLogs.map((entry: AuditLogEntry) => (
               <div
                 key={entry.id}
@@ -1401,6 +1440,138 @@ function UsersAdmin() {
           )}
         </div>
       </div>
+
+      {/* ── Reset Password: Confirmation Modal ──────────────────────────────── */}
+      <AnimatePresence>
+        {resettingUserId && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+              onClick={() => setResettingUserId(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md card p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-accent-gold/15 p-2.5 shrink-0">
+                    <AlertTriangle size={20} className="text-accent-gold" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-display text-lg text-cream-200">
+                      Reset password?
+                    </h4>
+                    <p className="text-cream-200/55 text-sm mt-2">
+                      This will reset the password for{" "}
+                      <strong className="text-cream-200/80">
+                        {users?.find((u) => u.id === resettingUserId)?.email ||
+                          resettingUserId}
+                      </strong>
+                      . Their current password will stop working immediately.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    className="btn-ghost text-sm"
+                    onClick={() => setResettingUserId(null)}
+                    disabled={resetPasswordMutation.isPending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary text-sm flex items-center gap-2"
+                    onClick={() => {
+                      if (resettingUserId)
+                        resetPasswordMutation.mutate(resettingUserId);
+                    }}
+                    disabled={resetPasswordMutation.isPending}
+                  >
+                    <KeyRound size={13} />
+                    {resetPasswordMutation.isPending
+                      ? "Resetting..."
+                      : "Reset Password"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Reset Password: New Password Display Modal ───────────────────────── */}
+      <AnimatePresence>
+        {resetResult && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+              onClick={() => setResetResult(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="w-full max-w-md card p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-accent-sage/15 p-2.5 shrink-0">
+                    <CheckCircle size={20} className="text-accent-sage" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-display text-lg text-cream-200">
+                      Password reset for {resetResult.email}
+                    </h4>
+                    <p className="text-accent-coral/80 text-xs mt-1 font-medium">
+                      This password will only be shown once. Share it securely
+                      with the user.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-accent-gold/20 bg-accent-gold/5 px-4 py-3">
+                  <div className="text-cream-200/40 text-[10px] uppercase tracking-wider mb-1.5">
+                    New password
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 block font-mono text-accent-gold text-sm break-all select-all">
+                      {resetResult.new_password}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetResult.new_password);
+                        toast.success("Password copied to clipboard");
+                      }}
+                      className="p-2 rounded-lg text-cream-200/30 hover:text-cream-200/70 hover:bg-cream-200/8 transition-colors shrink-0"
+                      title="Copy to clipboard"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    className="btn-ghost text-sm"
+                    onClick={() => setResetResult(null)}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

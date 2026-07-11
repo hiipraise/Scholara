@@ -135,6 +135,10 @@ export const adminApi = {
     }),
   deactivateUser: (userId: string) =>
     apiClient.delete(`/admin/users/${userId}`),
+  resetPassword: (userId: string) =>
+    apiClient.post<{ message: string; user_id: string; new_password: string }>(
+      `/admin/users/${userId}/reset-password`,
+    ),
 
   getQuestionFlags: (status: "open" | "resolved" | "all" = "open") =>
     apiClient.get<QuestionFlag[]>("/admin/question-flags", {

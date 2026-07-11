@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   User,
   Mail,
+  Lock,
   Edit2,
   Save,
   X,
@@ -11,6 +12,8 @@ import {
   Shield,
   GraduationCap,
   Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { setTokens } from "../api/client";
@@ -30,6 +33,11 @@ export default function ProfilePage() {
   const [editAcademic, setEditAcademic] = useState(false);
   const [levelVal, setLevelVal] = useState(user?.level || "100L");
   const [semesterVal, setSemesterVal] = useState<number>(user?.semester || 1);
+  const [editPassword, setEditPassword] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const nameMutation = useMutation({
     mutationFn: (name: string) => usersApi.updateProfile({ full_name: name }),
@@ -67,6 +75,37 @@ export default function ProfilePage() {
         e.response?.data?.detail || "Failed to update academic settings",
       ),
   });
+
+  const passwordMutation = useMutation({
+    mutationFn: () =>
+      useAuthStore.getState().changePassword(oldPassword, newPassword),
+    onSuccess: () => {
+      setEditPassword(false);
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Password updated");
+    },
+    onError: (e: any) =>
+      toast.error(e.response?.data?.detail || "Failed to update password"),
+  });
+
+  function validatePasswordStrength(pw: string): string[] {
+    const errors: string[] = [];
+    if (pw.length < 8) errors.push("At least 8 characters");
+    if (!/[A-Z]/.test(pw)) errors.push("One uppercase letter");
+    if (!/[a-z]/.test(pw)) errors.push("One lowercase letter");
+    if (!/[0-9]/.test(pw)) errors.push("One digit");
+    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(pw)) errors.push("One special character");
+    return errors;
+  }
+
+  function canSubmitPassword(): boolean {
+    if (!oldPassword || !newPassword || !confirmPassword) return false;
+    if (newPassword !== confirmPassword) return false;
+    if (oldPassword === newPassword) return false;
+    return validatePasswordStrength(newPassword).length === 0;
+  }
 
   const ROLE_CONFIG: Record<
     string,
@@ -377,6 +416,199 @@ export default function ProfilePage() {
                 </div>
               </div>
             </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Change Password */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.23 }}
+        className="card p-5"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Lock size={15} className="text-cream-200/40" />
+            <span className="text-cream-200/70 text-sm font-semibold">
+              Change Password
+            </span>
+          </div>
+          {!editPassword ? (
+            <button
+              onClick={() => setEditPassword(true)}
+              className="flex items-center gap-1.5 text-cream-200/30 hover:text-cream-200/65 text-xs transition-colors"
+            >
+              <Edit2 size={12} /> Change
+            </button>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (passwordMutation.isPending) return;
+                  passwordMutation.mutate();
+                }}
+                disabled={!canSubmitPassword() || passwordMutation.isPending}
+                className="flex items-center gap-1.5 text-accent-sage text-xs hover:opacity-80 disabled:opacity-40"
+              >
+                <Save size={12} />{" "}
+                {passwordMutation.isPending ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => {
+                  setEditPassword(false);
+                  setOldPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                }}
+                className="flex items-center gap-1.5 text-cream-200/30 text-xs hover:text-cream-200/60"
+              >
+                <X size={12} /> Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {editPassword ? (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-3 border-t border-cream-200/8 space-y-3">
+                <p className="text-cream-200/35 text-xs">
+                  Enter your current password and a new password. Must be at
+                  least 8 characters with uppercase, lowercase, digit, and
+                  special character.
+                </p>
+
+                {/* Current password */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="input-field text-sm pr-10"
+                    placeholder="Current password"
+                    autoComplete="current-password"
+                    autoFocus
+                  />
+                </div>
+
+                {/* New password */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="input-field text-sm pr-10"
+                    placeholder="New password"
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                {/* Confirm new password */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="input-field text-sm pr-10"
+                    placeholder="Confirm new password"
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                {/* Show/hide toggle */}
+                <button
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="flex items-center gap-1.5 text-cream-200/25 hover:text-cream-200/50 text-xs transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff size={13} />
+                  ) : (
+                    <Eye size={13} />
+                  )}
+                  {showPassword ? "Hide" : "Show"} passwords
+                </button>
+
+                {/* Strength validation */}
+                {newPassword && (
+                  <div className="space-y-1">
+                    <div className="text-cream-200/28 text-[10px] uppercase tracking-wider">
+                      Requirements
+                    </div>
+                    {[
+                      { label: "At least 8 characters", test: newPassword.length >= 8 },
+                      { label: "One uppercase letter", test: /[A-Z]/.test(newPassword) },
+                      { label: "One lowercase letter", test: /[a-z]/.test(newPassword) },
+                      { label: "One digit", test: /[0-9]/.test(newPassword) },
+                      { label: "One special character", test: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(newPassword) },
+                      ...(confirmPassword
+                        ? [{ label: "Passwords match", test: newPassword === confirmPassword }]
+                        : []),
+                      ...(oldPassword && newPassword
+                        ? [{ label: "Different from current", test: oldPassword !== newPassword }]
+                        : []),
+                    ].map(({ label, test }) => (
+                      <div
+                        key={label}
+                        className="flex items-center gap-2"
+                      >
+                        <div
+                          className={clsx(
+                            "w-1.5 h-1.5 rounded-full shrink-0",
+                            test ? "bg-accent-sage" : "bg-cream-200/15",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-[11px]",
+                            test
+                              ? "text-cream-200/55"
+                              : "text-cream-200/25",
+                          )}
+                        >
+                          {label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <motion.button
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => passwordMutation.mutate()}
+                    disabled={!canSubmitPassword() || passwordMutation.isPending}
+                    className="btn-primary text-sm flex items-center gap-2"
+                  >
+                    <Check size={14} />
+                    {passwordMutation.isPending
+                      ? "Updating..."
+                      : "Update Password"}
+                  </motion.button>
+                  <button
+                    onClick={() => {
+                      setEditPassword(false);
+                      setOldPassword("");
+                      setNewPassword("");
+                      setConfirmPassword("");
+                    }}
+                    className="btn-ghost text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <p className="text-cream-200/35 text-xs">
+              Last changed — review your account security regularly.
+            </p>
           )}
         </AnimatePresence>
       </motion.div>

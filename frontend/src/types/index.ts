@@ -7,6 +7,7 @@ export interface User {
   level: string;
   semester: number;
   is_active: boolean;
+  must_change_password?: boolean;
 }
 
 export interface Course {

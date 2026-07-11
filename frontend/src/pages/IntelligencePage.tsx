@@ -265,7 +265,7 @@ export default function IntelligencePage() {
                                 href={url || undefined}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="block truncate text-cream-200/45 hover:text-cream-200/70"
+                                className="block break-words text-cream-200/45 hover:text-cream-200/70 leading-snug"
                               >
                                 {label || ref}
                               </a>

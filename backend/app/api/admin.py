@@ -492,7 +492,10 @@ async def reset_user_password(
 
     await users_col().update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"password_hash": password_hash}},
+        {"$set": {
+            "password_hash": password_hash,
+            "must_change_password": True,
+        }},
     )
 
     logger.info(f"Password reset for {user.get('email')} by superadmin {superadmin['email']}")

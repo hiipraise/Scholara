@@ -56,6 +56,17 @@ export function clearTokens() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// UNAUTHORIZED CALLBACK — bridges axios interceptor to auth store
+// Avoids circular dependency: client.ts → store → client.ts
+// ════════════════════════════════════════════════════════════════════════════
+
+let _onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(cb: () => void) {
+  _onUnauthorized = cb;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // AXIOS CLIENT
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -66,7 +77,7 @@ export const apiClient: AxiosInstance = axios.create({
   },
   withCredentials: true,
   timeout: 15000,
-  validateStatus: (status) => status < 500,
+  validateStatus: (status) => status >= 200 && status < 300,
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -109,6 +120,26 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // ── Don't attempt refresh on auth endpoints — 401 means wrong      ──
+      // ── credentials, not an expired session.                            ──
+      const url = originalRequest.url || '';
+      if (url.includes('/auth/signin') || url.includes('/auth/signup')) {
+        return Promise.reject(error);
+      }
+
+      // ── Refresh request itself failed — immediate bailout ──────────────
+      if (originalRequest.headers?.["X-Refresh-Request"] === "true") {
+        clearTokens();
+        _onUnauthorized?.();
+        if (
+          typeof window !== "undefined" &&
+          window.location.pathname !== AUTH_PATH
+        ) {
+          window.location.href = AUTH_PATH;
+        }
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -130,9 +161,13 @@ apiClient.interceptors.response.use(
           throw new Error("No refresh token available");
         }
 
+        // Mark refresh request to prevent deadlock:
+        // if the refresh endpoint itself returns 401, the interceptor
+        // will immediately bail out instead of queuing itself in failedQueue.
         const refreshResponse = await apiClient.post<{ access_token: string }>(
           "/auth/refresh",
           { refresh_token: refreshToken },
+          { headers: { "X-Refresh-Request": "true" } } as any,
         );
 
         const { access_token } = refreshResponse.data;
@@ -146,6 +181,7 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (err) {
         clearTokens();
+        _onUnauthorized?.();
         processQueue(err, null);
         if (typeof window !== "undefined" && window.location.pathname !== AUTH_PATH) {
           window.location.href = AUTH_PATH;
@@ -158,6 +194,7 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 403) {
       clearTokens();
+      _onUnauthorized?.();
       if (typeof window !== "undefined" && window.location.pathname !== AUTH_PATH) {
         window.location.href = AUTH_PATH;
       }
