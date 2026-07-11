@@ -360,16 +360,17 @@ async def _feed_response(feed: dict | None, user_id: str) -> dict:
 
     total = len(questions)
     done_count = len(completed & set(qids))
-    correct_ids = await attempts_col().distinct(
-        "question_id",
+    correct_cursor = attempts_col().find(
         {
             "user_id": user_id,
             "feed_date": feed.get("feed_date", ""),
             "question_id": {"$in": qids},
             "is_correct": True,
         },
+        {"question_id": 1},
     )
-    correct_count = len(set(correct_ids) & set(qids))
+    correct_ids = {doc["question_id"] async for doc in correct_cursor}
+    correct_count = len(correct_ids & set(qids))
     completed_count = min(done_count, total)
     return {
         "feed_date": feed.get("feed_date", ""),
@@ -474,16 +475,17 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
         total = len(qids)
         completed_count = len(completed)
         feed_completed = completed_count >= active_count if active_count else False
-        correct_ids = await attempts_col().distinct(
-            "question_id",
+        correct_cursor = attempts_col().find(
             {
                 "user_id": user_id,
                 "feed_date": today_str,
                 "question_id": {"$in": qids},
                 "is_correct": True,
             },
+            {"question_id": 1},
         )
-        correct_count = len(set(correct_ids) & set(qids))
+        correct_ids = {doc["question_id"] async for doc in correct_cursor}
+        correct_count = len(correct_ids & set(qids))
     else:
         total = 0
         completed_count = 0
