@@ -395,7 +395,14 @@ async def refresh_daily_feed(user: dict) -> dict:
 
     existing = await col.find_one({"user_id": user_id, "feed_date": today_str})
     if existing and not existing.get("is_fully_completed"):
-        return await _feed_response(existing, user_id)
+        # Allow refresh if user has answered all active questions (feed may have stale inactive IDs)
+        qids = existing.get("question_ids", [])
+        valid_oids = [ObjectId(x) for x in qids if ObjectId.is_valid(x)]
+        active_count = await questions_col().count_documents({"_id": {"$in": valid_oids}, "is_active": True})
+        completed_count = len(existing.get("completed_ids", []))
+        if completed_count < active_count:
+            return await _feed_response(existing, user_id)
+        # All active questions answered but feed doc says incomplete — allow refresh
 
     exclude = existing.get("question_ids", []) if existing else []
     question_ids = await _build_question_ids(user, exclude=exclude, target=FEED_SIZE)
@@ -454,17 +461,19 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
     feed = await feeds_col().find_one({"user_id": user_id, "feed_date": today_str})
     if feed:
         completed = list(feed.get("completed_ids", []))
+        qids = feed.get("question_ids", [])
+        valid_oids = [ObjectId(x) for x in qids if ObjectId.is_valid(x)]
+        active_count = await questions_col().count_documents({"_id": {"$in": valid_oids}, "is_active": True})
         if question_id not in completed:
             completed.append(question_id)
-            fully = len(completed) >= len(feed.get("question_ids", []))
+            fully = len(completed) >= active_count
             await feeds_col().update_one(
                 {"_id": feed["_id"]},
                 {"$set": {"completed_ids": completed, "is_fully_completed": fully}},
             )
-        qids = feed.get("question_ids", [])
         total = len(qids)
         completed_count = len(completed)
-        feed_completed = completed_count >= total if total else False
+        feed_completed = completed_count >= active_count if active_count else False
         correct_ids = await attempts_col().distinct(
             "question_id",
             {
