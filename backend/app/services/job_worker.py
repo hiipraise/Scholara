@@ -126,6 +126,7 @@ async def _process_pdf_bg(
                 "depth_level": q.get("depth_level", "apply"),
                 "solution_steps": q.get("solution_steps", []),
                 "is_active": True,
+                "source": "ai",
             })
         if q_docs:
             await questions_col().insert_many(q_docs)

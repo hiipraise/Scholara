@@ -1,0 +1,1066 @@
+{
+  "ran_at": "2026-07-11T07:04:28.925991",
+  "total_deactivated": 3111,
+  "affected_pairs": [
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 1,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 3,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 6,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 7,
+      "deactivated": 22
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 8,
+      "deactivated": 2
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 11,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 2,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 3,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 7,
+      "deactivated": 4
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 8,
+      "deactivated": 2
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 11,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438f",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 5,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 6,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 2,
+      "deactivated": 2
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 3,
+      "deactivated": 41
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 4,
+      "deactivated": 22
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 5,
+      "deactivated": 21
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 6,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 7,
+      "deactivated": 21
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 9,
+      "deactivated": 22
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 10,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 11,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 1,
+      "deactivated": 22
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 3,
+      "deactivated": 5
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 5,
+      "deactivated": 22
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 6,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 8,
+      "deactivated": 23
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 4,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 5,
+      "deactivated": 4
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 6,
+      "deactivated": 23
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 7,
+      "deactivated": 40
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 1,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 9,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 10,
+      "deactivated": 1
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 11,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 2,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 3,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 4,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 5,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 6,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 7,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 8,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 10,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 11,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 12,
+      "deactivated": 1
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 3,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 5,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 10,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 12,
+      "deactivated": 1
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 2,
+      "deactivated": 1
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 4,
+      "deactivated": 21
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 3,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 4,
+      "deactivated": 40
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 12,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 1,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 2,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 3,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 4,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 5,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 6,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 7,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 8,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 9,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 10,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 11,
+      "deactivated": 20
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 12,
+      "deactivated": 20
+    }
+  ],
+  "requeued_pairs": [
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 6
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504390",
+      "week_number": 12
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504393",
+      "week_number": 12
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504395",
+      "week_number": 11
+    },
+    {
+      "course_id": "69a83e572964e6bf9e50438e",
+      "week_number": 11
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 10
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504391",
+      "week_number": 11
+    },
+    {
+      "course_id": "69a83e572964e6bf9e504392",
+      "week_number": 10
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 11
+    },
+    {
+      "course_id": "69a83e582964e6bf9e504394",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 1
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 1
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 1
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 1
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 1
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 4
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a36cb367a98f2ecc172c",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 4
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a523b367a98f2ecc175c",
+      "week_number": 12
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a56db367a98f2ecc175d",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a5beb367a98f2ecc175e",
+      "week_number": 12
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 4
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a67ab367a98f2ecc175f",
+      "week_number": 12
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 4
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a6b8b367a98f2ecc1760",
+      "week_number": 12
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 3
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 2
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 4
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 5
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 6
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 7
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 8
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 9
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 10
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 11
+    },
+    {
+      "course_id": "6a01a715b367a98f2ecc1761",
+      "week_number": 12
+    }
+  ]
+}

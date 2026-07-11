@@ -177,6 +177,15 @@ async def startup():
     """Initialize database indexes, ensure superadmin, start background worker."""
     logger.info("Starting Scholara API...")
 
+    # ── Production-safety assertion: never boot with mock AI provider ──
+    if settings.APP_ENV.lower() == "production" and (
+        settings.AI_PROVIDER.lower() == "mock" or settings.ALLOW_MOCK_QUESTION_GENERATION
+    ):
+        raise RuntimeError(
+            "Refusing to start: AI_PROVIDER=mock or ALLOW_MOCK_QUESTION_GENERATION=true "
+            "while APP_ENV=production."
+        )
+
     try:
         await create_indexes()
         logger.info("Database indexes created")

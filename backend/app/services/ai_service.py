@@ -465,6 +465,7 @@ async def generate_questions(
                 "question_style": q.get("question_style", "application"),
                 "depth_level": q.get("depth_level", "apply"),
                 "solution_steps": q.get("solution_steps", []),
+                "source": "ai",
             })
         qs = normalized
         if len(qs) < count:
@@ -548,6 +549,7 @@ def _mock_questions(
             "question_style": style,
             "depth_level": "apply" if style != "theory" else "understand",
             "solution_steps": steps,
+            "source": "mock",
         })
     return questions
 

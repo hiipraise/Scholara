@@ -76,7 +76,7 @@ export const apiClient: AxiosInstance = axios.create({
     "Content-Type": "application/json",
   },
   withCredentials: true,
-  timeout: 15000,
+  timeout: 30000,
   validateStatus: (status) => status >= 200 && status < 300,
 });
 

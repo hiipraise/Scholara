@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from typing import Optional
 import random
 import logging
+from time import perf_counter
+import asyncio
 from bson import ObjectId
 
 from app.core.database import (
@@ -125,6 +127,8 @@ async def _sample_for_course(
     if alloc <= 0:
         return []
 
+    t0 = perf_counter()
+
     profile = await profiles_col().find_one({"course_id": cid}) or {}
     mix_targets = profile.get("mix_targets") or {"calculation": 25, "application": 40, "theory": 35}
     by_style = _style_allocations(alloc, mix_targets)
@@ -139,6 +143,7 @@ async def _sample_for_course(
             "course_id": cid,
             "week_number": {"$lte": unlocked},
             "is_active": True,
+            "source": {"$ne": "mock"},
             **({"question_style": style} if style else {}),
             **({"_id": {"$nin": [ObjectId(x) for x in blocked_ids if ObjectId.is_valid(x)]}} if blocked_ids else {}),
         }
@@ -159,6 +164,13 @@ async def _sample_for_course(
     remaining = alloc - len(picked)
     if remaining > 0:
         await _pull(None, remaining)
+
+    elapsed = perf_counter() - t0
+    logger.info(
+        "_sample_for_course %s: alloc=%d unlocked=%d picked=%d in %.0fms",
+        cid, alloc, unlocked, len(picked[:alloc]), elapsed * 1000,
+    )
+
     return picked[:alloc]
 
 
@@ -183,19 +195,37 @@ async def _build_question_ids(user: dict, exclude: list[str], target: int) -> li
     base  = target // count
     rem   = target % count
 
-    all_ids: list[str] = []
+    # ── Parallelize per-course sampling across courses ────────────────
+    t0 = perf_counter()
 
-    for i, course in enumerate(courses):
+    async def _sample_course(i: int, course: dict) -> list[str]:
         cid = str(course["_id"])
         alloc = base + (1 if i < rem else 0)
         if cid in today_exam_ids:
             alloc = min(alloc * 2, 15)
         elif cid in upcoming_exam_ids:
             alloc = min(alloc + 3, 12)
-
         unlocked = await get_unlocked_week(user_id, cid)
-        skip_ids = exclude + all_ids
-        all_ids.extend(await _sample_for_course(cid, unlocked, alloc, skip_ids))
+        return await _sample_for_course(cid, unlocked, alloc, exclude)
+
+    course_results = await asyncio.gather(*[
+        _sample_course(i, course) for i, course in enumerate(courses)
+    ])
+
+    # ── Merge results, dedupe across courses (minor overlap possible) ─
+    seen: set[str] = set(exclude)
+    all_ids: list[str] = []
+    for ids in course_results:
+        for qid in ids:
+            if qid not in seen:
+                seen.add(qid)
+                all_ids.append(qid)
+
+    elapsed = perf_counter() - t0
+    logger.info(
+        "_build_question_ids: %d courses sampled in %.2fs (target=%d, got=%d)",
+        count, elapsed, target, len(all_ids),
+    )
 
     random.shuffle(all_ids)
     return all_ids[:target]
