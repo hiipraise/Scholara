@@ -1,25 +1,28 @@
 // src/App.tsx
-import { Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster, toast } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
 import { setOnUnauthorized } from './api/client';
 
-import AuthPage from './pages/AuthPage';
-import HomePage from './pages/HomePage';
-import CoursesPage from './pages/CoursesPage';
-import StudyPage from './pages/StudyPage';
-import IntelligencePage from './pages/IntelligencePage';
-import AdminPage from './pages/AdminPage';
-import ProfilePage from './pages/ProfilePage';
-import ForcePasswordChange from './pages/ForcePasswordChange';
-import LessonPage from './pages/LessonPage';
-import CourseDetailPage from './pages/CourseDetailPage';
+// ── Eager: app shell components needed immediately ────────────────────────
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
 import { initDeferredPrompt } from './lib/deferredPrompt';
+
+// ── Lazy: page-level code splitting — loaded on demand ────────────────────
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const HomePage = lazy(() => import('./pages/HomePage'));
+const CoursesPage = lazy(() => import('./pages/CoursesPage'));
+const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
+const StudyPage = lazy(() => import('./pages/StudyPage'));
+const IntelligencePage = lazy(() => import('./pages/IntelligencePage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const ForcePasswordChange = lazy(() => import('./pages/ForcePasswordChange'));
+const LessonPage = lazy(() => import('./pages/LessonPage'));
 
 // ════════════════════════════════════════════════════════════════════════════
 // Capture beforeinstallprompt at module level so it's available even before

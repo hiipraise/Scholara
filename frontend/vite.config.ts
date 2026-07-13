@@ -83,6 +83,24 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core React + routing — always loaded
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // State management + data fetching — always loaded
+          'vendor-data': ['@tanstack/react-query', 'zustand', 'axios'],
+          // Animation — large but used on most pages
+          'vendor-animation': ['framer-motion'],
+          // Icons — used everywhere
+          'vendor-icons': ['lucide-react'],
+          // Utility libraries — used across multiple pages
+          'vendor-utils': ['react-hot-toast', 'date-fns'],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
