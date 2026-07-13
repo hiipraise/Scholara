@@ -10,10 +10,12 @@ import {
   Flag,
   MessageSquareText,
   RotateCcw,
+  WifiOff,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Question, AnswerResult } from "../../types";
 import { feedApi, questionsApi } from "../../api/index";
+import { enqueueAnswer } from "../../lib/queueDb";
 import toast from "react-hot-toast";
 
 interface Props {
@@ -58,6 +60,30 @@ export default function QuestionCard({
     if (isAnswered || loading) return;
     setSelected(key);
     setLoading(true);
+
+    // If offline, queue the answer for later sync
+    if (!navigator.onLine) {
+      try {
+        await enqueueAnswer(question.id, key);
+        // Create a local result so the UI reflects the answer as recorded
+        const localResult: AnswerResult = {
+          is_correct: false, // Unknown until synced
+          correct_answer: "",
+          explanation: "Your answer has been saved and will be submitted when you're back online.",
+          question_id: question.id,
+        };
+        setResult(localResult);
+        onAnswered?.(localResult);
+        toast.success("Answer saved offline — will sync when connected", { duration: 2000 });
+      } catch {
+        toast.error("Failed to save answer offline");
+        setSelected(null);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const res = await feedApi.submitAnswer(question.id, key);
       setResult(res.data);
@@ -68,8 +94,27 @@ export default function QuestionCard({
         toast.error("Incorrect", { duration: 1500 });
       }
     } catch {
-      toast.error("Failed to submit answer");
-      setSelected(null);
+      // If the error is a network error (not a server validation), try to queue
+      if (!navigator.onLine) {
+        try {
+          await enqueueAnswer(question.id, key);
+          const localResult: AnswerResult = {
+            is_correct: false,
+            correct_answer: "",
+            explanation: "Your answer has been saved and will be submitted when you're back online.",
+            question_id: question.id,
+          };
+          setResult(localResult);
+          onAnswered?.(localResult);
+          toast.success("Answer saved offline — will sync when connected", { duration: 2000 });
+        } catch {
+          toast.error("Failed to save answer");
+          setSelected(null);
+        }
+      } else {
+        toast.error("Failed to submit answer");
+        setSelected(null);
+      }
     } finally {
       setLoading(false);
     }

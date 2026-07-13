@@ -1,16 +1,28 @@
 // src/api/client.ts
 /**
  * API client with access + refresh token handling.
- * Tokens stored in memory (primary) + sessionStorage (backup for tab refresh).
- * NO localStorage usage anywhere.
+ * Tokens stored in memory (primary):
+ *   - Access token:  in-memory only (never persisted anywhere).
+ *   - Refresh token: in-memory + IndexedDB (survives PWA close/reopen for
+ *                     installed app).
+ * NO localStorage or sessionStorage usage for tokens.
  */
 import axios, { AxiosInstance } from "axios";
+import {
+  getRefreshToken as getPersistedRefreshToken,
+  setRefreshToken as persistRefreshToken,
+  clearRefreshToken as clearPersistedRefreshToken,
+} from "../lib/authDb";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const AUTH_PATH = "/auth";
 
 // ════════════════════════════════════════════════════════════════════════════
-// TOKEN STORAGE (in-memory + sessionStorage backup — NO localStorage)
+// TOKEN STORAGE
+//   - Access token:  in-memory only — never persisted to IndexedDB,
+//                     sessionStorage, or localStorage.
+//   - Refresh token: in-memory + IndexedDB (survives PWA close/reopen)
+//   - NO sessionStorage or localStorage usage anywhere.
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TokenStore {
@@ -20,39 +32,33 @@ interface TokenStore {
 
 let tokenStore: TokenStore = { access: null, refresh: null };
 
-export function setTokens(access: string, refresh: string) {
+export async function setTokens(access: string, refresh: string) {
   tokenStore.access = access;
   tokenStore.refresh = refresh;
-  // sessionStorage backup for tab refresh recovery
-  sessionStorage.setItem("scholara_access_token", access);
-  sessionStorage.setItem("scholara_refresh_token", refresh);
+  // Refresh token persisted to IndexedDB so the installed PWA can restore
+  // the session after being fully closed and reopened.
+  await persistRefreshToken(refresh);
 }
 
 export function getAccessToken(): string | null {
-  if (tokenStore.access) return tokenStore.access;
-  const stored = sessionStorage.getItem("scholara_access_token");
-  if (stored) {
-    tokenStore.access = stored;
-    return stored;
-  }
-  return null;
+  return tokenStore.access;
 }
 
-export function getRefreshToken(): string | null {
+export async function getRefreshToken(): Promise<string | null> {
   if (tokenStore.refresh) return tokenStore.refresh;
-  const stored = sessionStorage.getItem("scholara_refresh_token");
-  if (stored) {
-    tokenStore.refresh = stored;
-    return stored;
+  // IndexedDB persistence for installed PWA (survives close/reopen)
+  const persisted = await getPersistedRefreshToken();
+  if (persisted) {
+    tokenStore.refresh = persisted;
+    return persisted;
   }
   return null;
 }
 
-export function clearTokens() {
+export async function clearTokens() {
   tokenStore.access = null;
   tokenStore.refresh = null;
-  sessionStorage.removeItem("scholara_access_token");
-  sessionStorage.removeItem("scholara_refresh_token");
+  await clearPersistedRefreshToken();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -129,7 +135,7 @@ apiClient.interceptors.response.use(
 
       // ── Refresh request itself failed — immediate bailout ──────────────
       if (originalRequest.headers?.["X-Refresh-Request"] === "true") {
-        clearTokens();
+        await clearTokens();
         _onUnauthorized?.();
         if (
           typeof window !== "undefined" &&
@@ -156,7 +162,7 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = getRefreshToken();
+        const refreshToken = await getRefreshToken();
         if (!refreshToken) {
           throw new Error("No refresh token available");
         }
@@ -173,14 +179,14 @@ apiClient.interceptors.response.use(
         const { access_token } = refreshResponse.data;
 
         // Store new access token (keep same refresh token)
-        setTokens(access_token, refreshToken);
+        await setTokens(access_token, refreshToken);
 
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
         processQueue(null, access_token);
 
         return apiClient(originalRequest);
       } catch (err) {
-        clearTokens();
+        await clearTokens();
         _onUnauthorized?.();
         processQueue(err, null);
         if (typeof window !== "undefined" && window.location.pathname !== AUTH_PATH) {

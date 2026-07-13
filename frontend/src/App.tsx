@@ -18,6 +18,14 @@ import LessonPage from './pages/LessonPage';
 import CourseDetailPage from './pages/CourseDetailPage';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate';
+import { initDeferredPrompt } from './lib/deferredPrompt';
+
+// ════════════════════════════════════════════════════════════════════════════
+// Capture beforeinstallprompt at module level so it's available even before
+// auth-gated components (like InstallPrompt inside Layout) have mounted.
+// ════════════════════════════════════════════════════════════════════════════
+initDeferredPrompt();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +55,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { refreshUser, isHydrated } = useAuthStore();
+
+  // Register service worker update handler (new version available toast)
+  useServiceWorkerUpdate();
 
   // Register 401→forceLogout bridge once (synchronous — no API call)
   useEffect(() => {

@@ -7,11 +7,13 @@ import {
   ChevronUp,
   Clock,
   AlertTriangle,
+  WifiOff,
 } from "lucide-react";
 import { format, parseISO, isToday, isPast } from "date-fns";
 import clsx from "clsx";
 import { adminApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import type { ExamSlot } from "../types";
 import { COURSE_COLORS } from "../constants/courseColors";
 
@@ -46,6 +48,7 @@ function getCurrentStudyDay(lecturesStartStr: string | null): number {
 
 export default function StudyPage() {
   const { user } = useAuthStore();
+  const { isOnline } = useNetworkStatus();
   const [showFullCycle, setShowFullCycle] = useState(false);
   const [cycleTab, setCycleTab] = useState<"current" | "past">("current");
   const [selectedPastTerm, setSelectedPastTerm] = useState<string>("");
@@ -153,6 +156,14 @@ export default function StudyPage() {
         <p className="text-cream-200/45 text-sm mt-1">
           {user?.level} · Semester {user?.semester} · BSc. Software Engineering
         </p>
+        {!isOnline && (
+          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-gold/10 border border-accent-gold/15">
+            <WifiOff size={14} className="text-accent-gold shrink-0" />
+            <p className="text-accent-gold text-xs">
+              You are offline. Study cycle and exam data may not be up to date.
+            </p>
+          </div>
+        )}
       </motion.div>
 
       {/* Today + next days */}

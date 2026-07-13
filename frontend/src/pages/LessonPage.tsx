@@ -14,9 +14,13 @@ import {
   ExternalLink,
   Loader2,
   BookMarked,
+  WifiOff,
 } from "lucide-react";
 import { lessonApi, coursesApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
+import { getStoredLesson } from "../lib/contentDb";
+import OfflineBadge from "../components/OfflineBadge";
 import type { Lesson, LessonSection, ChatMessage, FormulaCard } from "../types";
 import toast from "react-hot-toast";
 
@@ -27,6 +31,7 @@ export default function LessonPage() {
   }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { isOnline } = useNetworkStatus();
   const weekNumber = parseInt(week || "1", 10);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -34,6 +39,8 @@ export default function LessonPage() {
   const [expandedSections, setExpandedSections] = useState<Set<number>>(
     new Set([0]),
   );
+  const [offlineLesson, setOfflineLesson] = useState<Lesson | null>(null);
+  const [offlineLoading, setOfflineLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch course for breadcrumb
@@ -45,7 +52,7 @@ export default function LessonPage() {
     ? courses.find((c) => c.id === courseId)
     : null;
 
-  // Fetch lesson
+  // Fetch lesson (online)
   const {
     data: lesson,
     isLoading,
@@ -55,10 +62,20 @@ export default function LessonPage() {
   } = useQuery({
     queryKey: ["lesson", courseId, weekNumber],
     queryFn: () => lessonApi.get(courseId!, weekNumber).then((r) => r.data),
-    enabled: !!courseId,
+    enabled: !!courseId && isOnline,
     retry: 1,
     staleTime: 1000 * 60 * 5,
   });
+
+  // Offline fallback: read from IndexedDB
+  useEffect(() => {
+    if (isOnline || !courseId) return;
+    setOfflineLoading(true);
+    getStoredLesson(courseId, weekNumber).then((stored) => {
+      if (stored) setOfflineLesson(stored);
+      setOfflineLoading(false);
+    });
+  }, [isOnline, courseId, weekNumber]);
 
   // Chat mutation
   const chatMutation = useMutation({
@@ -109,8 +126,8 @@ export default function LessonPage() {
     });
   }
 
-  // Loading state (generation can take 5-15s)
-  if (isLoading) {
+  // Loading state (offline fallback check first)
+  if (isLoading || offlineLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <motion.div
@@ -135,15 +152,21 @@ export default function LessonPage() {
             </motion.div>
           </div>
           <h2 className="font-display text-lg text-cream-200 mb-2">
-            Building your lesson...
+            {!isOnline ? "Loading offline lesson..." : "Building your lesson..."}
           </h2>
           <p className="text-cream-200/45 text-sm">
-            Nexus Core is reading the lecture material, researching supplementary
-            references, and crafting a structured lesson for{" "}
-            <strong className="text-cream-200/70">
-              {course?.code || `Week ${weekNumber}`}
-            </strong>
-            . This usually takes a few seconds.
+            {!isOnline ? (
+              "Looking for a cached copy of this lesson in your offline storage."
+            ) : (
+              <>
+                Nexus Core is reading the lecture material, researching
+                supplementary references, and crafting a structured lesson for{" "}
+                <strong className="text-cream-200/70">
+                  {course?.code || `Week ${weekNumber}`}
+                </strong>
+                . This usually takes a few seconds.
+              </>
+            )}
           </p>
           <motion.div
             animate={{ opacity: [0.3, 1, 0.3] }}
@@ -155,8 +178,8 @@ export default function LessonPage() {
     );
   }
 
-  // Error state
-  if (error) {
+  // Error state — try offline fallback
+  if (error && !offlineLesson) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center max-w-sm">
@@ -165,8 +188,10 @@ export default function LessonPage() {
             Lesson unavailable
           </h2>
           <p className="text-cream-200/45 text-sm mb-4">
-            {(error as any)?.response?.data?.detail ||
-              "Could not load this lesson. The lecture content may not be processed yet."}
+            {!isOnline
+              ? "You appear to be offline and this lesson hasn't been downloaded for offline access. Connect to the internet or download this course for offline use."
+              : (error as any)?.response?.data?.detail ||
+                "Could not load this lesson. The lecture content may not be processed yet."}
           </p>
           <div className="flex justify-center gap-2">
             <button
@@ -188,7 +213,10 @@ export default function LessonPage() {
     );
   }
 
-  if (!lesson) return null;
+  // Determine which lesson to display (online or offline fallback)
+  const displayLesson = lesson || offlineLesson;
+  if (!displayLesson) return null;
+  const isOfflineView = !!offlineLesson;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-16">
@@ -206,14 +234,17 @@ export default function LessonPage() {
             <ArrowLeft size={14} />
             Back
           </button>
-          <h1 className="font-display text-xl sm:text-2xl font-bold text-cream-200">
-            Teach Me — Week {lesson.week_number}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-cream-200">
+              Teach Me — Week {displayLesson.week_number}
+            </h1>
+            {isOfflineView && <OfflineBadge size="sm" />}
+          </div>
           <p className="text-cream-200/45 text-sm mt-1">
-            {lesson.course_code} — {lesson.course_title}
+            {displayLesson.course_code} — {displayLesson.course_title}
           </p>
         </div>
-        {user?.role === "admin" || user?.role === "superadmin" ? (
+        {!isOfflineView && (user?.role === "admin" || user?.role === "superadmin") ? (
           <button
             onClick={() => regenerateMutation.mutate()}
             disabled={regenerateMutation.isPending}
@@ -244,7 +275,7 @@ export default function LessonPage() {
               Overview
             </h2>
             <p className="text-cream-200/65 text-sm leading-relaxed">
-              {lesson.overview}
+              {displayLesson.overview}
             </p>
           </div>
         </div>
@@ -252,7 +283,7 @@ export default function LessonPage() {
 
       {/* Sections */}
       <div className="space-y-3">
-        {(lesson.sections || []).map((section: LessonSection, i: number) => {
+        {(displayLesson.sections || []).map((section: LessonSection, i: number) => {
           const isOpen = expandedSections.has(i);
           return (
             <motion.div
@@ -347,7 +378,7 @@ export default function LessonPage() {
       </div>
 
       {/* Formula Cards */}
-      {lesson.formula_cards?.length > 0 && (
+      {displayLesson.formula_cards?.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -359,7 +390,7 @@ export default function LessonPage() {
             Formula Cards
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {(lesson.formula_cards || []).map((fc: FormulaCard, i: number) => (
+            {(displayLesson.formula_cards || []).map((fc: FormulaCard, i: number) => (
               <FormulaCardView key={i} card={fc} />
             ))}
           </div>
@@ -367,7 +398,7 @@ export default function LessonPage() {
       )}
 
       {/* Key Takeaways */}
-      {lesson.key_takeaways?.length > 0 && (
+      {displayLesson.key_takeaways?.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -379,7 +410,7 @@ export default function LessonPage() {
             Key Takeaways
           </h3>
           <ul className="space-y-2">
-            {(lesson.key_takeaways || []).map((takeaway: string, i: number) => (
+            {(displayLesson.key_takeaways || []).map((takeaway: string, i: number) => (
               <li
                 key={i}
                 className="flex items-start gap-2.5 text-cream-200/65 text-sm"
@@ -393,7 +424,7 @@ export default function LessonPage() {
       )}
 
       {/* Further Reading */}
-      {lesson.further_reading?.length > 0 && (
+      {displayLesson.further_reading?.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -405,7 +436,7 @@ export default function LessonPage() {
             Further Reading
           </h3>
           <div className="space-y-2">
-            {lesson.further_reading.map((fr, i) => (
+            {displayLesson.further_reading.map((fr, i) => (
               <a
                 key={i}
                 href={fr.url}

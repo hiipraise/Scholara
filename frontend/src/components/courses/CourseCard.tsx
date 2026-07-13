@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -18,6 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { coursesApi } from "../../api/index";
+import { getDownloadState } from "../../lib/contentDb";
 import type { Course, CoursePDF } from "../../types";
 import PDFRow from "./PDFRow";
 import toast from "react-hot-toast";
@@ -49,6 +51,14 @@ export default function CourseCard({
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showDeleteCourseModal, setShowDeleteCourseModal] = useState(false);
+  const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
+
+  // Check if this course is downloaded for offline
+  useEffect(() => {
+    getDownloadState(course.id).then((state) => {
+      setIsOfflineAvailable(state?.status === "complete");
+    });
+  }, [course.id]);
 
   const { data: pdfs, isLoading: pdfsLoading } = useQuery({
     queryKey: ["course-pdfs", course.id],
@@ -217,6 +227,12 @@ export default function CourseCard({
             <span className="text-cream-200/35 text-xs">
               {course.question_count} questions
             </span>
+            {isOfflineAvailable && (
+              <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-accent-sage/15 text-accent-sage border border-accent-sage/20 font-semibold uppercase tracking-wider">
+                <Download size={7} />
+                Offline
+              </span>
+            )}
           </div>
         </div>
 

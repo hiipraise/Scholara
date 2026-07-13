@@ -2,11 +2,11 @@
 /**
  * Authentication store — password-based with access + refresh tokens.
  * No emailVerified state — signup logs user in immediately.
- * Tokens managed via client.ts (in-memory + sessionStorage, no localStorage).
+ * Tokens managed via client.ts (in-memory + IndexedDB + sessionStorage for access).
  */
 import { create } from 'zustand';
 import type { User } from '../types';
-import { setTokens, clearTokens, getAccessToken } from '../api/client';
+import { setTokens, clearTokens, getAccessToken, getRefreshToken, apiClient } from '../api/client';
 import { authApi } from '../api/auth';
 
 interface AuthStore {
@@ -21,7 +21,7 @@ interface AuthStore {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   changePassword: (old_password: string, new_password: string) => Promise<void>;
-  forceLogout: () => void;
+  forceLogout: () => Promise<void>;
   updateUser: (partial: Partial<User>) => void;
   setError: (error: string | null) => void;
 }
@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const res = await authApi.signUp({ email, password, invite_code, full_name });
       const { access_token, refresh_token, user } = res.data;
-      setTokens(access_token, refresh_token);
+      await setTokens(access_token, refresh_token);
       set({
         user,
         isAuthenticated: true,
@@ -60,7 +60,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const res = await authApi.signIn({ email, password });
       const { access_token, refresh_token, user } = res.data;
-      setTokens(access_token, refresh_token);
+      await setTokens(access_token, refresh_token);
       set({
         user,
         isAuthenticated: true,
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch {
       // Logout is best-effort; clear tokens regardless.
     } finally {
-      clearTokens();
+      await clearTokens();
       set({
         user: null,
         isAuthenticated: false,
@@ -97,11 +97,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   refreshUser: async () => {
     try {
-      const token = getAccessToken();
+      let token = getAccessToken();
+
+      // If no access token in memory, try to use the refresh token from
+      // IndexedDB to get a new one. This handles page refreshes and PWA
+      // relaunches where only the refresh token survives.
       if (!token) {
-        set({ isHydrated: true });
-        return;
+        const storedRefreshToken = await getRefreshToken();
+        if (storedRefreshToken) {
+          try {
+            const refreshRes = await apiClient.post<{ access_token: string }>(
+              "/auth/refresh",
+              { refresh_token: storedRefreshToken },
+              { headers: { "X-Refresh-Request": "true" } } as any,
+            );
+            const { access_token } = refreshRes.data;
+            await setTokens(access_token, storedRefreshToken);
+            token = access_token;
+          } catch {
+            // Refresh failed — token may be expired or revoked.
+            await clearTokens();
+            set({ user: null, isAuthenticated: false, isHydrated: true });
+            return;
+          }
+        } else {
+          // No access token and no refresh token — nothing to restore.
+          set({ isHydrated: true });
+          return;
+        }
       }
+
+      // Now we have a valid access token — get the user profile.
       const res = await authApi.getMe();
       set({
         user: res.data,
@@ -109,7 +135,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isHydrated: true,
       });
     } catch {
-      clearTokens();
+      await clearTokens();
       set({
         user: null,
         isAuthenticated: false,
@@ -132,8 +158,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
 
-  forceLogout: () => {
-    clearTokens();
+  forceLogout: async () => {
+    await clearTokens();
     set({
       user: null,
       isAuthenticated: false,

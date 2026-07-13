@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -7,19 +7,40 @@ import {
   BookOpen,
   CheckCircle,
   Clock,
+  Download,
   FileText,
   GraduationCap,
   HelpCircle,
   Loader2,
+  Trash2,
+  WifiOff,
 } from "lucide-react";
 import clsx from "clsx";
 import { coursesApi, feedApi } from "../api/index";
 import { COURSE_COLORS } from "../constants/courseColors";
 import toast from "react-hot-toast";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
+import { useOfflineDownload } from "../hooks/useOfflineDownload";
+import { getDownloadState, type DownloadState } from "../lib/contentDb";
 
 export default function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const { isOnline } = useNetworkStatus();
+  const { progress: dlProgress, downloadCourse, removeDownload } = useOfflineDownload();
+
+  const [offlineState, setOfflineState] = useState<DownloadState | undefined>(undefined);
+  const [checkingOffline, setCheckingOffline] = useState(true);
+
+  // Check offline download state for this course
+  useEffect(() => {
+    if (!courseId) return;
+    setCheckingOffline(true);
+    getDownloadState(courseId).then((state) => {
+      setOfflineState(state);
+      setCheckingOffline(false);
+    });
+  }, [courseId, dlProgress.status]);
   // Fetch all courses to find this one
   const { data: courses, isLoading: coursesLoading } = useQuery({
     queryKey: ["courses", "all"],
@@ -148,7 +169,7 @@ export default function CourseDetailPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
             <span className="text-cream-200/35 text-xs">
               {course.credit_units} units
             </span>
@@ -164,7 +185,72 @@ export default function CourseDetailPage() {
             <span className="text-cream-200/35 text-xs">
               {course.question_count} questions
             </span>
+
+            {/* Offline download status */}
+            {!checkingOffline && (
+              <>
+                {offlineState?.status === "complete" && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-accent-sage/15 text-accent-sage border border-accent-sage/20 font-semibold uppercase tracking-wider">
+                    <Download size={8} />
+                    Offline available
+                  </span>
+                )}
+                {offlineState?.status === "partial" && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-accent-gold/15 text-accent-gold border border-accent-gold/20 font-semibold uppercase tracking-wider">
+                    <WifiOff size={8} />
+                    Partial download
+                  </span>
+                )}
+                {dlProgress.status === "downloading" && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-accent-sky/15 text-accent-sky border border-accent-sky/20 font-semibold uppercase tracking-wider">
+                    <Loader2 size={8} className="animate-spin" />
+                    {dlProgress.progressPct}%
+                  </span>
+                )}
+              </>
+            )}
           </div>
+        </div>
+
+        {/* Download / Remove offline button */}
+        <div className="flex items-center gap-2 shrink-0">
+          {!checkingOffline && (() => {
+            if (offlineState?.status === "complete") {
+              return (
+                <button
+                  onClick={() => {
+                    if (course) removeDownload(course.id);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent-coral/10 hover:bg-accent-coral/20 text-accent-coral/70 hover:text-accent-coral text-xs transition-colors border border-accent-coral/15"
+                  title="Remove offline content"
+                >
+                  <Trash2 size={13} />
+                  Remove offline
+                </button>
+              );
+            }
+            if (dlProgress.status === "downloading") {
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-sky/10 text-accent-sky/70 text-xs">
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>{dlProgress.progressPct}%</span>
+                </div>
+              );
+            }
+            return (
+              <button
+                onClick={() => {
+                  if (course) downloadCourse(course);
+                }}
+                disabled={!isOnline}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent-sky/10 hover:bg-accent-sky/20 text-accent-sky/70 hover:text-accent-sky text-xs transition-colors border border-accent-sky/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={!isOnline ? "Connect to the internet to download" : "Download for offline access"}
+              >
+                <Download size={13} />
+                {!isOnline ? "Offline" : "Download for offline"}
+              </button>
+            );
+          })()}
         </div>
       </motion.div>
 
