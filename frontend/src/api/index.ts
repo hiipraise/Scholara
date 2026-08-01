@@ -49,12 +49,17 @@ export const feedApi = {
       { params: { days } },
     ),
   getInsights: () => apiClient.get<FeedInsights>("/feed/insights"),
-  getPractice: (data: { course_ids: string[]; count: number }) =>
+  getPractice: (data: {
+    course_ids: string[];
+    count: number;
+    week_number?: number | null;
+  }) =>
     apiClient.post<
       DailyFeed & {
         is_custom: boolean;
         requested_count: number;
         selected_courses: string[];
+        week_number?: number | null;
       }
     >("/feed/practice", data),
 };

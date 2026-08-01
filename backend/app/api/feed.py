@@ -28,6 +28,7 @@ class MarkWeekRequest(BaseModel):
 class PracticeRequest(BaseModel):
     course_ids: list[str] = Field(default_factory=list)
     count: int = Field(default=30, ge=30, le=60)
+    week_number: int | None = Field(default=None, ge=1, le=52)
 
 
 async def _term_question_ids(level: str, semester: int) -> list[str]:
@@ -209,8 +210,9 @@ async def build_practice_feed(body: PracticeRequest, current_user: dict = Depend
         alloc = base + (1 if i < rem else 0)
         unlocked = await get_unlocked_week(user_id, cid)
 
+        week_filter = body.week_number if body.week_number is not None else {"$lte": unlocked}
         docs = await questions_col().aggregate([
-            {"$match": {"course_id": cid, "week_number": {"$lte": unlocked}, "is_active": True}},
+            {"$match": {"course_id": cid, "week_number": week_filter, "is_active": True}},
             {"$sample": {"size": alloc}},
         ]).to_list(None)
         question_ids.extend(str(d["_id"]) for d in docs)
@@ -248,6 +250,7 @@ async def build_practice_feed(body: PracticeRequest, current_user: dict = Depend
         "is_custom": True,
         "requested_count": body.count,
         "selected_courses": [str(c["_id"]) for c in selected_courses],
+        "week_number": body.week_number,
     }
 
 

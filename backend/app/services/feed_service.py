@@ -358,8 +358,9 @@ async def _feed_response(feed: dict | None, user_id: str) -> dict:
             "solution_steps": q.get("solution_steps") if is_done else [],
         })
 
+    visible_qids = {q["id"] for q in questions}
     total = len(questions)
-    done_count = len(completed & set(qids))
+    done_count = len(completed & visible_qids)
     correct_cursor = attempts_col().find(
         {
             "user_id": user_id,
@@ -379,10 +380,10 @@ async def _feed_response(feed: dict | None, user_id: str) -> dict:
         "completed_count": completed_count,
         "correct_count": min(correct_count, completed_count),
         "accuracy_pct": round(min(correct_count, completed_count) / completed_count * 100, 1) if completed_count else 0,
-        "is_fully_completed": feed.get("is_fully_completed", False),
+        "is_fully_completed": total > 0 and completed_count >= total,
         "progress_pct": round(completed_count / total * 100, 1) if total else 0,
         "batch_number": feed.get("batch_number", 1),
-        "can_refresh": feed.get("is_fully_completed", False),
+        "can_refresh": total > 0 and completed_count >= total,
     }
 
 

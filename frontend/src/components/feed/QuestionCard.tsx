@@ -23,6 +23,8 @@ interface Props {
   courseCode: string;
   courseColor: string;
   index: number;
+  total: number;
+  displayNumber: number;
   onAnswered?: (result: AnswerResult) => void;
   onFlagged?: (questionId: string) => void;
 }
@@ -40,6 +42,8 @@ export default function QuestionCard({
   courseCode,
   courseColor,
   index,
+  total,
+  displayNumber,
   onAnswered,
   onFlagged,
 }: Props) {
@@ -177,6 +181,9 @@ export default function QuestionCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="badge border border-cream-200/10 bg-cream-200/7 text-[10px] font-semibold uppercase tracking-wider text-cream-200/65">
+            Question {displayNumber} of {total}
+          </span>
           <span
             className="badge text-[10px] font-semibold uppercase tracking-wider border"
             style={{
