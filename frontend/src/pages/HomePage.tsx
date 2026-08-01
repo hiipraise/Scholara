@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   RefreshCw,
   AlertCircle,
@@ -36,6 +36,7 @@ export default function HomePage() {
   const [showFilters, setShowFilters] = useState(false);
   const [practiceCourseIds, setPracticeCourseIds] = useState<string[]>([]);
   const [practiceCount, setPracticeCount] = useState<30 | 60>(30);
+  const [practiceWeek, setPracticeWeek] = useState<number | null>(null);
   const [customFeed, setCustomFeed] = useState<any | null>(null);
   const [practiceResults, setPracticeResults] = useState<
     Record<string, boolean>
@@ -110,9 +111,11 @@ export default function HomePage() {
       feedApi.getPractice({
         course_ids: practiceCourseIds,
         count: practiceCount,
+        week_number: practiceWeek,
       }),
     onSuccess: ({ data }) => {
       setCustomFeed(data);
+      setHiddenQuestionIds([]);
       setPracticeResults({});
       setShowPracticeResultModal(false);
       toast.success(`Loaded ${data.total} focused questions`);
@@ -157,6 +160,14 @@ export default function HomePage() {
     [activeQuestions, hiddenQuestionIds, shouldHideFlaggedLocally],
   );
 
+  const activeTotal = activeQuestions.length;
+  const activeCompletedCount = useMemo(
+    () => activeQuestions.filter((q) => q.is_completed).length,
+    [activeQuestions],
+  );
+  const isActiveFeedFullyAnswered =
+    activeTotal > 0 && activeCompletedCount >= activeTotal;
+
   const remainingActiveUnanswered = useMemo(
     () =>
       activeQuestions.filter(
@@ -170,15 +181,18 @@ export default function HomePage() {
   // Show practice result modal when all questions answered
   useEffect(() => {
     if (!customFeed?.questions?.length) return;
-    if (remainingActiveUnanswered === 0) {
+    if (isActiveFeedFullyAnswered) {
       setShowPracticeResultModal(true);
     }
-  }, [customFeed, remainingActiveUnanswered]);
+  }, [customFeed, isActiveFeedFullyAnswered]);
 
   // Show completion modal for true completion or "hidden-by-flag" exhaustion.
   useEffect(() => {
     if (!feed) return;
-    if (feed.is_fully_completed) {
+    const feedFullyAnswered =
+      feed.questions?.length > 0 &&
+      feed.questions.every((q: Question) => q.is_completed);
+    if (feedFullyAnswered) {
       setFeedModalMode("complete");
       setShowFeedCompleteModal(true);
       return;
@@ -211,6 +225,16 @@ export default function HomePage() {
     (c) => c.level === user?.level && c.semester === user?.semester,
   );
   const practicePool = currentCourses;
+  const availablePracticeWeeks = useMemo(() => {
+    const weeks = new Set<number>();
+    progress?.courses?.forEach((courseProgress) => {
+      Object.keys(courseProgress.question_counts || {}).forEach((week) => {
+        const n = Number(week);
+        if (n > 0) weeks.add(n);
+      });
+    });
+    return Array.from(weeks).sort((a, b) => a - b);
+  }, [progress]);
 
   // Filter questions
   const displayedQuestions = useMemo(() => {
@@ -333,10 +357,14 @@ export default function HomePage() {
         }
         count={practiceCount}
         onCountChange={setPracticeCount}
+        selectedWeek={practiceWeek}
+        onWeekChange={setPracticeWeek}
+        availableWeeks={availablePracticeWeeks}
         onGenerate={() => practiceMutation.mutate()}
         onBackToFeed={() => {
           setCustomFeed(null);
           setPracticeResults({});
+          setHiddenQuestionIds([]);
           setShowPracticeResultModal(false);
         }}
         isPending={practiceMutation.isPending}
@@ -435,6 +463,10 @@ export default function HomePage() {
               courseCode={courseMap[q.course_id]?.code || "COURSE"}
               courseColor={courseMap[q.course_id]?.color || "#4a7fb5"}
               index={i}
+              total={activeTotal || displayedQuestions.length}
+              displayNumber={
+                activeQuestions.findIndex((aq) => aq.id === q.id) + 1 || i + 1
+              }
               onAnswered={(result) => {
                 if (customFeed) {
                   setPracticeResults((prev) => ({
@@ -463,7 +495,7 @@ export default function HomePage() {
                       correct_count: result.correct_count ?? prev.correct_count,
                       accuracy_pct: result.accuracy_pct ?? prev.accuracy_pct,
                       is_fully_completed:
-                        result.feed_completed ?? prev.is_fully_completed,
+                        total > 0 && completedCount >= total,
                       progress_pct: total
                         ? Math.round((completedCount / total) * 1000) / 10
                         : prev.progress_pct,
@@ -473,7 +505,12 @@ export default function HomePage() {
                     };
                   });
                 }
-                if (!customFeed && result.feed_completed) {
+                if (
+                  !customFeed &&
+                  result.total &&
+                  result.completed_count != null &&
+                  result.completed_count >= result.total
+                ) {
                   setFeedModalMode("complete");
                   setShowFeedCompleteModal(true);
                 }
@@ -504,6 +541,7 @@ export default function HomePage() {
         onBackToFeed={() => {
           setCustomFeed(null);
           setPracticeResults({});
+          setHiddenQuestionIds([]);
           setShowPracticeResultModal(false);
         }}
       />

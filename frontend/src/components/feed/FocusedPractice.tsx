@@ -8,6 +8,9 @@ interface FocusedPracticeProps {
   onToggleCourse: (id: string) => void;
   count: 30 | 60;
   onCountChange: (n: 30 | 60) => void;
+  selectedWeek: number | null;
+  onWeekChange: (week: number | null) => void;
+  availableWeeks: number[];
   onGenerate: () => void;
   onBackToFeed: () => void;
   isPending: boolean;
@@ -24,6 +27,9 @@ export default function FocusedPractice({
   onToggleCourse,
   count,
   onCountChange,
+  selectedWeek,
+  onWeekChange,
+  availableWeeks,
   onGenerate,
   onBackToFeed,
   isPending,
@@ -46,9 +52,27 @@ export default function FocusedPractice({
             Focused Practice
           </h3>
           <p className="text-cream-200/35 text-xs">
-            Home feed stays as-is. Generate extra 30–60 questions for selected
-            course(s).
+            Generate extra 30–60 questions for one course, selected courses,
+            or all courses in a specific week.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-cream-200/35 text-xs">Week</span>
+          <select
+            value={selectedWeek ?? ""}
+            onChange={(e) =>
+              onWeekChange(e.target.value ? Number(e.target.value) : null)
+            }
+            className="input-field h-9 min-w-28 py-1 text-xs"
+          >
+            <option value="">All unlocked</option>
+            {availableWeeks.map((week) => (
+              <option key={week} value={week}>
+                Week {week}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -125,6 +149,7 @@ export default function FocusedPractice({
         <p className="text-cream-200/35 text-xs mt-2">
           Focused progress: {customDone}/{customTotal} completed · Correct:{" "}
           {customCorrect}
+          {customFeed.week_number ? ` · Week ${customFeed.week_number}` : ""}
         </p>
       )}
     </motion.div>
