@@ -168,12 +168,16 @@ class CalendarIn(BaseModel):
     semester: int
     school_resume_date: str
     lectures_start_date: str
+    exam_week_start_date: Optional[str] = None
+    exam_week_end_date: Optional[str] = None
     semester_end_date: Optional[str] = None
 
 
 class CalendarUpdateIn(BaseModel):
     school_resume_date: str
     lectures_start_date: str
+    exam_week_start_date: Optional[str] = None
+    exam_week_end_date: Optional[str] = None
     semester_end_date: Optional[str] = None
 
 
@@ -195,7 +199,7 @@ async def create_calendar(body: CalendarIn, admin: dict = Depends(get_admin_user
     await log_audit(
         actor_id=admin["id"], actor_email=admin.get("email", ""),
         action="calendar.create", target_type="calendar",
-        details={"level": body.level, "semester": body.semester, "resume_date": body.school_resume_date, "end_date": end_date},
+        details={"level": body.level, "semester": body.semester, "resume_date": body.school_resume_date, "exam_week_start_date": body.exam_week_start_date, "exam_week_end_date": body.exam_week_end_date, "end_date": end_date},
     )
     return {"message": "Calendar saved"}
 
@@ -217,7 +221,7 @@ async def update_calendar(
     await log_audit(
         actor_id=admin["id"], actor_email=admin.get("email", ""),
         action="calendar.update", target_type="calendar", target_id=calendar_id,
-        details={"resume_date": body.school_resume_date, "end_date": end_date},
+        details={"resume_date": body.school_resume_date, "exam_week_start_date": body.exam_week_start_date, "exam_week_end_date": body.exam_week_end_date, "end_date": end_date},
     )
     return {"message": "Calendar updated"}
 

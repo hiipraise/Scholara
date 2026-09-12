@@ -139,6 +139,8 @@ export const adminApi = {
     semester: number;
     school_resume_date: string;
     lectures_start_date: string;
+    exam_week_start_date?: string;
+    exam_week_end_date?: string;
     semester_end_date: string;
   }) => apiClient.post("/admin/calendar", data),
   updateCalendar: (id: string, data: unknown) =>
