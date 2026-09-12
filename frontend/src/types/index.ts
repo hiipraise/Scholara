@@ -127,6 +127,8 @@ export interface AcademicCalendar {
   semester: number;
   school_resume_date: string;
   lectures_start_date: string;
+  exam_week_start_date: string | null;
+  exam_week_end_date: string | null;
   semester_end_date: string | null;
   is_active: boolean;
 }

@@ -10,6 +10,8 @@ export default function CalendarAdmin() {
   const emptyDates = {
     school_resume_date: "",
     lectures_start_date: "",
+    exam_week_start_date: "",
+    exam_week_end_date: "",
     semester_end_date: "",
   };
   const [form, setForm] = useState({
@@ -64,12 +66,16 @@ export default function CalendarAdmin() {
     id: string;
     school_resume_date: string;
     lectures_start_date: string;
+    exam_week_start_date: string | null;
+    exam_week_end_date: string | null;
     semester_end_date: string | null;
   }) => {
     setEditingId(cal.id);
     setEditForm({
       school_resume_date: cal.school_resume_date || "",
       lectures_start_date: cal.lectures_start_date || "",
+      exam_week_start_date: cal.exam_week_start_date || "",
+      exam_week_end_date: cal.exam_week_end_date || "",
       semester_end_date: cal.semester_end_date || "",
     });
   };
@@ -100,6 +106,32 @@ export default function CalendarAdmin() {
             <option value={1}>Semester 1</option>
             <option value={2}>Semester 2</option>
           </select>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-cream-200/40 text-xs mb-1">
+              Exam Week Starts (optional)
+            </label>
+            <input
+              type="date"
+              value={form.exam_week_start_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, exam_week_start_date: e.target.value }))
+              }
+              className="input-field"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-cream-200/40 text-xs mb-1">
+              Exam Week Ends (optional)
+            </label>
+            <input
+              type="date"
+              value={form.exam_week_end_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, exam_week_end_date: e.target.value }))
+              }
+              className="input-field"
+            />
+          </div>
           <div className="col-span-2 sm:col-span-1">
             <label className="block text-cream-200/40 text-xs mb-1">
               School Resumes
@@ -215,7 +247,7 @@ export default function CalendarAdmin() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {editingId === cal.id ? (
                 <>
                   <div>
@@ -252,6 +284,38 @@ export default function CalendarAdmin() {
                   </div>
                   <div>
                     <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                      Exam starts
+                    </div>
+                    <input
+                      type="date"
+                      value={editForm.exam_week_start_date}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          exam_week_start_date: e.target.value,
+                        }))
+                      }
+                      className="input-field text-xs"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                      Exam ends
+                    </div>
+                    <input
+                      type="date"
+                      value={editForm.exam_week_end_date}
+                      onChange={(e) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          exam_week_end_date: e.target.value,
+                        }))
+                      }
+                      className="input-field text-xs"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
                       Ends
                     </div>
                     <input
@@ -272,6 +336,8 @@ export default function CalendarAdmin() {
                   {[
                     { label: "Resumed", val: cal.school_resume_date },
                     { label: "Lectures", val: cal.lectures_start_date },
+                    { label: "Exam starts", val: cal.exam_week_start_date },
+                    { label: "Exam ends", val: cal.exam_week_end_date },
                     { label: "Ends", val: cal.semester_end_date },
                   ].map(({ label, val }) => (
                     <div key={label}>
