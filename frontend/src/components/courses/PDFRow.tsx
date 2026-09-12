@@ -24,7 +24,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
   const qc = useQueryClient();
   const [showSummary, setShowSummary] = useState(false);
   const [editingWeek, setEditingWeek] = useState(false);
-  const [weekDraft, setWeekDraft] = useState(pdf.week_number);
+  const [weekDraft, setWeekDraft] = useState(pdf.week_number ?? 1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const deleteMutation = useMutation({
@@ -49,7 +49,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
           (item) => item.id !== pdf.id,
         );
         const nextWeeks = Array.from(
-          new Set(nextPdfs.map((item) => item.week_number)),
+          new Set(nextPdfs.map((item) => item.week_number).filter((week): week is number => week !== null)),
         ).sort((a, b) => a - b);
         return current.map((course) =>
           course.id === courseId
@@ -109,7 +109,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
           item.id === pdf.id ? { ...item, week_number: clamped } : item,
         );
         const nextWeeks = Array.from(
-          new Set(nextPdfs.map((item) => item.week_number)),
+          new Set(nextPdfs.map((item) => item.week_number).filter((week): week is number => week !== null)),
         ).sort((a, b) => a - b);
         return current.map((course) =>
           course.id === courseId
@@ -148,7 +148,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
 
   function handleWeekSave() {
     const clamped = Math.max(1, Math.min(20, weekDraft));
-    if (clamped === pdf.week_number) {
+    if (clamped === (pdf.week_number ?? 1)) {
       setEditingWeek(false);
       return;
     }
@@ -189,7 +189,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleWeekSave();
                     if (e.key === "Escape") {
-                      setWeekDraft(pdf.week_number);
+                      setWeekDraft(pdf.week_number ?? 1);
                       setEditingWeek(false);
                     }
                   }}
@@ -204,7 +204,7 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
                 </button>
                 <button
                   onClick={() => {
-                    setWeekDraft(pdf.week_number);
+                    setWeekDraft(pdf.week_number ?? 1);
                     setEditingWeek(false);
                   }}
                   className="text-cream-200/30 hover:text-cream-200/60 text-[10px] transition-colors"
@@ -215,10 +215,10 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
             ) : (
               <>
                 <span className="text-cream-200/35 text-[10px]">
-                  Week {pdf.week_number}
+                  {pdf.is_course_material ? "Course material" : `Week ${pdf.week_number}`}
                   {pdf.is_processed ? " · Processed" : " · Processing..."}
                 </span>
-                {isAdmin && (
+                {isAdmin && !pdf.is_course_material && (
                   <button
                     onClick={() => setEditingWeek(true)}
                     className="text-cream-200/20 hover:text-cream-200/55 transition-colors"

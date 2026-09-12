@@ -80,12 +80,14 @@ export const coursesApi = {
     apiClient.get<CoursePDF[]>(`/courses/${courseId}/pdfs`),
   uploadPdf: (
     courseId: string,
-    weekNumber: number,
+    weekNumber: number | null,
     file: File,
+    isCourseMaterial = false,
     onProgress?: (pct: number) => void,
   ) => {
     const fd = new FormData();
-    fd.append("week_number", String(weekNumber));
+    if (weekNumber !== null) fd.append("week_number", String(weekNumber));
+    if (isCourseMaterial) fd.append("is_course_material", "true");
     fd.append("file", file);
     return apiClient.post(`/courses/${courseId}/upload-pdf`, fd, {
       headers: { "Content-Type": "multipart/form-data" },

@@ -78,7 +78,8 @@ export interface AnswerResult {
 
 export interface CoursePDF {
   id: string;
-  week_number: number;
+  week_number: number | null;
+  is_course_material?: boolean;
   original_name: string;
   is_processed: boolean;
   summary: string | null;

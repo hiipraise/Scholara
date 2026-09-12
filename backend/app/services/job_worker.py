@@ -72,8 +72,9 @@ async def _process_pdf_bg(
     file_path: str,
     course_code: str,
     course_title: str,
-    week_number: int,
+    week_number: int | None,
     course_id: str,
+    is_course_material: bool = False,
 ) -> None:
     """
     Execute the full PDF processing pipeline for a single job.
@@ -93,7 +94,7 @@ async def _process_pdf_bg(
 
         # ── Core AI processing ─────────────────────────────────────────
         data = await process_pdf_file(
-            file_path, course_code, course_title, week_number,
+            file_path, course_code, course_title, week_number or 0,
             course_id=course_id,
         )
 
@@ -111,7 +112,7 @@ async def _process_pdf_bg(
 
         # ── Persist generated questions ────────────────────────────────
         q_docs = []
-        for q in data["questions"]:
+        for q in ([] if is_course_material else data["questions"]):
             q_docs.append({
                 "course_id": course_id,
                 "pdf_id": pdf_id,
@@ -228,8 +229,9 @@ async def _poll_loop(poll_interval: float = 5.0) -> None:
                     file_path=job["file_path"],
                     course_code=job["course_code"],
                     course_title=job["course_title"],
-                    week_number=job["week_number"],
+                    week_number=job.get("week_number"),
                     course_id=job["course_id"],
+                    is_course_material=job.get("is_course_material", False),
                 )
             else:
                 # ── No job available — wait and try again ──────────────
