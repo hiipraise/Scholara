@@ -27,7 +27,8 @@ import toast from "react-hot-toast";
 interface QueueItem {
   id: string;
   file: File;
-  week: number;
+  week: number | null;
+  isCourseMaterial: boolean;
   status: "pending" | "uploading" | "done" | "error";
   progress: number;
   errorMsg?: string;
@@ -47,6 +48,7 @@ export default function CourseCard({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const courseMaterialInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -106,18 +108,27 @@ export default function CourseCard({
     },
   });
 
-  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
+  function addFiles(files: File[], isCourseMaterial: boolean) {
     if (!files.length) return;
     const newItems: QueueItem[] = files.map((file) => ({
       id: `${file.name}-${Date.now()}-${Math.random()}`,
       file,
-      week: 1,
+      week: isCourseMaterial ? null : 1,
+      isCourseMaterial,
       status: "pending",
       progress: 0,
     }));
     setQueue((prev) => [...prev, ...newItems]);
+  }
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    addFiles(Array.from(e.target.files || []), false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleCourseMaterialPick(e: React.ChangeEvent<HTMLInputElement>) {
+    addFiles(Array.from(e.target.files || []), true);
+    if (courseMaterialInputRef.current) courseMaterialInputRef.current.value = "";
   }
 
   function setItemWeek(id: string, week: number) {
@@ -144,7 +155,7 @@ export default function CourseCard({
         ),
       );
       try {
-        await coursesApi.uploadPdf(course.id, item.week, item.file, (pct) => {
+        await coursesApi.uploadPdf(course.id, item.week, item.file, item.isCourseMaterial, (pct) => {
           setQueue((prev) =>
             prev.map((current) =>
               current.id === item.id ? { ...current, progress: pct } : current,
@@ -309,18 +320,31 @@ export default function CourseCard({
                     <span className="text-cream-200/60 text-xs font-semibold uppercase tracking-wider">
                       Upload PDFs
                     </span>
-                    <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-200/15 text-cream-200/55 hover:text-cream-200/80 hover:border-cream-200/25 cursor-pointer transition-colors text-xs">
-                      <Plus size={12} />
-                      Add Files
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".pdf"
-                        multiple
-                        className="hidden"
-                        onChange={handleFilePick}
-                      />
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cream-200/15 text-cream-200/55 hover:text-cream-200/80 hover:border-cream-200/25 cursor-pointer transition-colors text-xs">
+                        <Plus size={12} />
+                        Add weekly PDFs
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf"
+                          multiple
+                          className="hidden"
+                          onChange={handleFilePick}
+                        />
+                      </label>
+                      <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent-sky/25 text-accent-sky/70 hover:text-accent-sky hover:border-accent-sky/45 cursor-pointer transition-colors text-xs">
+                        <BookOpen size={12} />
+                        Add course material
+                        <input
+                          ref={courseMaterialInputRef}
+                          type="file"
+                          accept=".pdf"
+                          className="hidden"
+                          onChange={handleCourseMaterialPick}
+                        />
+                      </label>
+                    </div>
                   </div>
 
                   {queue.length > 0 ? (
@@ -383,14 +407,18 @@ export default function CourseCard({
                             )}
                           </div>
 
-                          {item.status === "pending" ? (
+                          {item.isCourseMaterial ? (
+                            <span className="text-accent-sky/70 text-[10px] shrink-0">
+                              Course material
+                            </span>
+                          ) : item.status === "pending" ? (
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-cream-200/30 text-[10px]">
                                 Wk
                               </span>
                               <input
                                 type="number"
-                                value={item.week}
+                                value={item.week ?? 1}
                                 min={1}
                                 max={20}
                                 onChange={(e) =>
@@ -419,7 +447,7 @@ export default function CourseCard({
                     </div>
                   ) : (
                     <p className="text-cream-200/25 text-xs text-center py-2">
-                      Click &quot;Add Files&quot; to select one or more PDFs
+                      Add weekly PDFs or a course-material PDF
                     </p>
                   )}
 

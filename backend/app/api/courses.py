@@ -38,7 +38,7 @@ async def list_courses(
         live_pdf_filter = {"course_id": cid, "is_deleted": {"$ne": True}}
         pdf_count  = await pdfs_col().count_documents(live_pdf_filter)
         q_count    = await questions_col().count_documents({"course_id": cid, "is_active": True})
-        week_docs  = await pdfs_col().distinct("week_number", live_pdf_filter)
+        week_docs  = await pdfs_col().distinct("week_number", {**live_pdf_filter, "week_number": {"$ne": None}})
         out.append({
             "id": cid,
             "code": c["code"],
@@ -122,19 +122,24 @@ async def list_pdfs(course_id: str, current_user: dict = Depends(get_current_use
 @router.post("/{course_id}/upload-pdf")
 async def upload_pdf(
     course_id: str,
-    week_number: int = Form(...),
+    week_number: Optional[int] = Form(None),
+    is_course_material: bool = Form(False),
     file: UploadFile = File(...),
     admin: dict = Depends(get_admin_user),
 ):
     course = await courses_col().find_one({"_id": ObjectId(course_id)})
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+    if not is_course_material and (week_number is None or not 1 <= week_number <= 20):
+        raise HTTPException(status_code=400, detail="Week number must be between 1 and 20")
+    if is_course_material:
+        week_number = None
 
     content_type = (file.content_type or "").lower()
     if content_type not in {"application/pdf", "application/x-pdf", "application/octet-stream"}:
         raise HTTPException(status_code=400, detail="Only PDF files accepted")
 
-    upload_dir = os.path.join(settings.UPLOAD_DIR, f"course_{course_id}", f"week_{week_number}")
+    upload_dir = os.path.join(settings.UPLOAD_DIR, f"course_{course_id}", "course_material" if is_course_material else f"week_{week_number}")
     os.makedirs(upload_dir, exist_ok=True)
     unique_name = f"{uuid.uuid4().hex}_{file.filename}"
     file_path   = os.path.join(upload_dir, unique_name)
@@ -168,6 +173,7 @@ async def upload_pdf(
     doc = {
         "course_id": course_id,
         "week_number": week_number,
+        "is_course_material": is_course_material,
         "filename": unique_name,
         "file_path": file_path,
         "original_name": file.filename,
@@ -188,6 +194,7 @@ async def upload_pdf(
         "course_title": course["title"],
         "pdf_id": pdf_id,
         "week_number": week_number,
+        "is_course_material": is_course_material,
         "file_path": file_path,
         "file_name": file.filename,
         "created_at": datetime.utcnow(),
@@ -198,8 +205,9 @@ async def upload_pdf(
     return {
         "id": pdf_id,
         "job_id": str(job_result.inserted_id),
-        "message": "PDF uploaded — Nexus Core processing started",
+        "message": "Course material uploaded — Nexus Core processing started" if is_course_material else "PDF uploaded — Nexus Core processing started",
         "week_number": week_number,
+        "is_course_material": is_course_material,
     }
 
 
