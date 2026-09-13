@@ -5,9 +5,9 @@ MongoDB-backed background worker for PDF processing jobs.
 Replaces FastAPI BackgroundTasks with a persistent, restart-resilient worker.
 Job state lives entirely in MongoDB — no Redis, no Celery, no extra infra.
 
-On server restart, any stuck "processing" jobs are reset to "pending" so the
-worker retries them. Exponential backoff is recorded in the job document and
-survives reboots.
+Jobs receive a processing lease, so stalled work is requeued without
+reclaiming healthy in-flight work. Exponential backoff is recorded in the job
+document and survives reboots.
 """
 
 import asyncio
@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timedelta
 from bson import ObjectId
 
+from app.core.config import settings
 from app.core.database import pdf_jobs_col, pdfs_col, questions_col
 from app.services.ai_service import process_pdf_file
 from app.services.intelligence_service import upsert_course_intelligence
@@ -41,25 +42,35 @@ async def _update_job(job_id: str, data: dict) -> None:
 
 
 async def _recover_stalled_jobs() -> None:
+    """Requeue only jobs whose processing lease has expired.
+
+    A server starting while another worker is active must not reclaim that
+    worker's job.  The prior implementation reset *every* processing job at
+    startup, which could cause duplicate work; without a restart, a hung AI
+    request could also leave a job processing indefinitely.
     """
-    On startup, find jobs that were left in "processing" state and reset them
-    to "pending" so the worker re-attempts them.
-    """
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=settings.PDF_PROCESSING_TIMEOUT_SECONDS)
     result = await pdf_jobs_col().update_many(
-        {"status": {"$in": ["processing", "claimed"]}},
+        {
+            "status": {"$in": ["processing", "claimed"]},
+            "$or": [
+                {"processing_started_at": {"$lte": cutoff}},
+                {"processing_started_at": None, "updated_at": {"$lte": cutoff}},
+                {"processing_started_at": {"$exists": False}, "updated_at": {"$lte": cutoff}},
+            ],
+        },
         {
             "$set": {
                 "status": "pending",
-                "updated_at": datetime.utcnow(),
-                "last_error": "Server restart — job was in-flight; reset to pending.",
+                "updated_at": now,
+                "processing_started_at": None,
+                "last_error": "Processing lease expired; requeued for retry.",
             },
         },
     )
     if result.modified_count > 0:
-        logger.info(
-            "Recovered %d stalled job(s) from 'processing'/'claimed' → 'pending'",
-            result.modified_count,
-        )
+        logger.warning("Requeued %d stalled PDF job(s)", result.modified_count)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -90,12 +101,19 @@ async def _process_pdf_bg(
             "last_attempt_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "last_error": None,
+            "processing_started_at": datetime.utcnow(),
         })
 
         # ── Core AI processing ─────────────────────────────────────────
-        data = await process_pdf_file(
-            file_path, course_code, course_title, week_number or 0,
-            course_id=course_id,
+        # The provider SDK can otherwise wait forever on a broken network
+        # connection, leaving the upload permanently marked as processing.
+        data = await asyncio.wait_for(
+            process_pdf_file(
+                file_path, course_code, course_title, week_number or 0,
+                course_id=course_id,
+                generate_questions_for_pdf=not is_course_material,
+            ),
+            timeout=settings.PDF_PROCESSING_TIMEOUT_SECONDS,
         )
 
         # ── Persist PDF metadata ───────────────────────────────────────
@@ -152,12 +170,17 @@ async def _process_pdf_bg(
             "completed_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "last_error": None,
+            "processing_started_at": None,
         })
 
     except Exception as e:
         job_doc = await pdf_jobs_col().find_one({"_id": ObjectId(job_id)})
         attempt = int((job_doc or {}).get("attempt_count", 0))
-        error_text = str(e)
+        error_text = (
+            f"PDF processing exceeded the {settings.PDF_PROCESSING_TIMEOUT_SECONDS}-second timeout"
+            if isinstance(e, TimeoutError)
+            else str(e)
+        )
         logger.error("PDF job %s failed (attempt %d): %s", job_id, attempt, error_text)
 
         if attempt < 3:
@@ -169,6 +192,7 @@ async def _process_pdf_bg(
                 "last_error": error_text,
                 "updated_at": datetime.utcnow(),
                 "next_attempt_at": datetime.utcnow() + timedelta(seconds=backoff_sec),
+                "processing_started_at": None,
             })
             logger.info(
                 "Job %s queued for retry in %ds (attempt %d/3)",
@@ -183,6 +207,7 @@ async def _process_pdf_bg(
             "failed_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
             "last_error": error_text,
+            "processing_started_at": None,
         })
 
 

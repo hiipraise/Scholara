@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE_MB: int = 50
 
+    # ── Background PDF processing ─────────────────────────────────────────
+    # A bounded run prevents an unavailable AI provider from leaving a job in
+    # the processing state forever.
+    PDF_PROCESSING_TIMEOUT_SECONDS: int = 300
+
     # ── Rate Limiting ──────────────────────────────────────────────────────
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
     RATE_LIMIT_AUTH_REQUESTS_PER_MINUTE: int = 5
