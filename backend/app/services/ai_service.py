@@ -629,6 +629,7 @@ async def process_pdf_file(
     week_number: int,
     question_count: int = 20,
     course_id: Optional[str] = None,
+    generate_questions_for_pdf: bool = True,
 ) -> dict:
     text = extract_text_from_pdf(file_path)
     text_len = len(text.strip())
@@ -663,8 +664,12 @@ async def process_pdf_file(
         "topics": summary_data.get("topics", []),
         "key_formulas": summary_data.get("key_formulas", []),
     }
-    questions = await generate_questions(
-        text, course_code, course_title, week_number, question_count, adaptive_context, course_id
+    questions = (
+        await generate_questions(
+            text, course_code, course_title, week_number, question_count, adaptive_context, course_id
+        )
+        if generate_questions_for_pdf
+        else []
     )
 
     return {
