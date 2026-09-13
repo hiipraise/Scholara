@@ -90,7 +90,10 @@ export const coursesApi = {
     if (isCourseMaterial) fd.append("is_course_material", "true");
     fd.append("file", file);
     return apiClient.post(`/courses/${courseId}/upload-pdf`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
+      // Let the browser set multipart/form-data including its boundary. A
+      // manually supplied content type can omit the boundary and make
+      // FastAPI reject the upload as an invalid multipart request.
+      timeout: 0,
       onUploadProgress: (e) => {
         if (e.total && onProgress)
           onProgress(Math.round((e.loaded / e.total) * 100));
