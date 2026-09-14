@@ -102,10 +102,78 @@ def clean_json(raw: str) -> str:
     return _clean_json(raw)
 
 
+def _salvage_truncated_json(raw: str) -> Optional[str]:
+    """Best-effort repair of JSON truncated mid-output (e.g. max_tokens hit).
+
+    Scans the first ``{``/``[`` onward while tracking strings (so brackets
+    inside strings are ignored) and the stack of open brackets. Every position
+    where a complete value just ended is recorded; the longest such prefix that
+    parses after closing any still-open brackets is returned. Returns None if
+    nothing salvageable.
+    """
+    start = -1
+    for i, ch in enumerate(raw):
+        if ch in "{[":
+            start = i
+            break
+    if start == -1:
+        return None
+
+    closer = {"{": "}", "[": "]"}
+
+    records: list[tuple[int, list[str]]] = []
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    i = start
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+                records.append((i + 1, list(stack)))
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch in "{[":
+                stack.append(ch)
+            elif ch in "}]":
+                if stack and closer[stack[-1]] == ch:
+                    stack.pop()
+                    records.append((i + 1, list(stack)))
+            elif ch not in ",:\r\n\t ":
+                # Bare token (number / true / false / null) — consume it.
+                j = i
+                while j < n and raw[j] not in ",}]" and not raw[j].isspace():
+                    j += 1
+                records.append((j, list(stack)))
+                i = j - 1
+        i += 1
+
+    for end, open_stack in reversed(records):
+        if end <= start:
+            continue
+        prefix = raw[start:end].rstrip()
+        if not prefix:
+            continue
+        candidate = prefix + "".join(closer[op] for op in reversed(open_stack))
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def _clean_json(raw: str) -> str:
     """Extract the first JSON object/array from a string.
-    Handles markdown code fences, leading/trailing text, and
-    truncated content by finding the outermost JSON structure."""
+    Handles markdown code fences, leading/trailing text, and truncated
+    content by parsing the longest salvageable JSON prefix."""
     raw = raw.strip()
 
     # Strip markdown code fences first
@@ -121,42 +189,12 @@ def _clean_json(raw: str) -> str:
     except json.JSONDecodeError:
         pass
 
-    # Find the first { or [ and last } or ]
-    start = -1
-    for i, ch in enumerate(raw):
-        if ch in "{[":
-            start = i
-            break
+    # Extract the outermost JSON value, repairing truncation if possible.
+    salvaged = _salvage_truncated_json(raw)
+    if salvaged is not None:
+        return salvaged
 
-    if start == -1:
-        return raw  # give up, let the caller handle the error
-
-    # Match the closing bracket
-    open_bracket = raw[start]
-    close_bracket = "}" if open_bracket == "{" else "]"
-    depth = 0
-    end = -1
-    for i in range(start, len(raw)):
-        if raw[i] == open_bracket:
-            depth += 1
-        elif raw[i] == close_bracket:
-            depth -= 1
-        if depth == 0:
-            end = i
-            break
-
-    if end == -1:
-        return raw  # no closing bracket found
-
-    candidate = raw[start:end + 1]
-
-    # Validate the extracted candidate is valid JSON
-    try:
-        json.loads(candidate)
-        return candidate.strip()
-    except json.JSONDecodeError:
-        # Brackets may be inside strings; fall back to original raw
-        return raw.strip()
+    return raw  # give up, let the caller handle the error
 
 
 STUDY_CYCLE_SYSTEM = (
@@ -501,7 +539,9 @@ async def generate_questions(
                 text=truncated,
             ),
             QUESTION_SYSTEM,
-            max_tokens=3500,
+            # 20 detailed MCQs (explanations + solution_steps) routinely exceed
+            # 3500 tokens; llama-3.1-70b-versatile caps output at 8192.
+            max_tokens=8000,
         )
         data = json.loads(_clean_json(raw))
         qs = data.get("questions", [])
