@@ -19,6 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { coursesApi } from "../../api/index";
+import { getApiErrorMessage } from "../../lib/apiError";
 import { getDownloadState } from "../../lib/contentDb";
 import type { Course, CoursePDF } from "../../types";
 import PDFRow from "./PDFRow";
@@ -145,6 +146,7 @@ export default function CourseCard({
     const pending = queue.filter((item) => item.status === "pending");
     if (!pending.length) return;
     setIsUploading(true);
+    let uploadedCount = 0;
 
     for (const item of pending) {
       setQueue((prev) =>
@@ -169,8 +171,9 @@ export default function CourseCard({
               : current,
           ),
         );
+        uploadedCount += 1;
       } catch (err: any) {
-        const msg = err?.response?.data?.detail || "Upload failed";
+        const msg = getApiErrorMessage(err, "Upload failed");
         setQueue((prev) =>
           prev.map((current) =>
             current.id === item.id
@@ -185,9 +188,11 @@ export default function CourseCard({
     qc.invalidateQueries({ queryKey: ["course-pdfs", course.id] });
     qc.invalidateQueries({ queryKey: ["courses"] });
     setIsUploading(false);
-    toast.success(
-      `${pending.length} PDF${pending.length > 1 ? "s" : ""} uploaded — AI processing started`,
-    );
+    if (uploadedCount) {
+      toast.success(
+        `${uploadedCount} PDF${uploadedCount > 1 ? "s" : ""} uploaded — AI processing started`,
+      );
+    }
   }
 
   const pendingCount = queue.filter((item) => item.status === "pending").length;
