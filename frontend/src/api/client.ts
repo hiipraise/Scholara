@@ -78,9 +78,9 @@ export function setOnUnauthorized(cb: () => void) {
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  // Do not set a default Content-Type. Axios applies application/json for
+  // object payloads, while FormData uploads must be left unset so the browser
+  // can add multipart/form-data with its required boundary.
   withCredentials: true,
   timeout: 30000,
   validateStatus: (status) => status >= 200 && status < 300,
