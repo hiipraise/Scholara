@@ -116,7 +116,21 @@ async def list_pdfs(course_id: str, current_user: dict = Depends(get_current_use
         .sort("week_number", 1)
         .to_list(None)
     )
-    return [_str_id(d) for d in docs]
+    pdf_ids = [str(doc["_id"]) for doc in docs]
+    jobs_by_pdf_id = {}
+    if pdf_ids:
+        jobs = await pdf_jobs_col().find({"course_id": course_id, "pdf_id": {"$in": pdf_ids}}).to_list(None)
+        jobs_by_pdf_id = {job["pdf_id"]: job for job in jobs}
+
+    out = []
+    for doc in docs:
+        pdf = _str_id(doc)
+        job = jobs_by_pdf_id.get(pdf["id"])
+        if job:
+            pdf["processing_status"] = job.get("status")
+            pdf["processing_error"] = job.get("last_error")
+        out.append(pdf)
+    return out
 
 
 @router.post("/{course_id}/upload-pdf")
@@ -209,6 +223,47 @@ async def upload_pdf(
         "week_number": week_number,
         "is_course_material": is_course_material,
     }
+
+
+# ── Retry failed PDF processing ────────────────────────────────────────────
+@router.post("/{course_id}/pdfs/{pdf_id}/retry")
+async def retry_pdf_processing(
+    course_id: str,
+    pdf_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    try:
+        pdf_object_id = ObjectId(pdf_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid PDF id")
+
+    pdf = await pdfs_col().find_one({
+        "_id": pdf_object_id,
+        "course_id": course_id,
+        "is_deleted": {"$ne": True},
+    })
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    result = await pdf_jobs_col().update_one(
+        {"course_id": course_id, "pdf_id": pdf_id, "status": "failed"},
+        {"$set": {
+            "status": "pending",
+            "attempt_count": 0,
+            "next_attempt_at": None,
+            "last_error": None,
+            "failed_at": None,
+            "processing_started_at": None,
+            "updated_at": datetime.utcnow(),
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="This PDF is not available to retry",
+        )
+
+    return {"message": "PDF processing has been queued for retry", "status": "pending"}
 
 
 # ── Soft-delete a PDF ──────────────────────────────────────────────────────

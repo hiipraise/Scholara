@@ -100,13 +100,14 @@ export const coursesApi = {
       },
     });
   },
-  // ── new ──────────────────────────────────────────────────────────────────
   deletePdf: (courseId: string, pdfId: string) =>
     apiClient.delete(`/courses/${courseId}/pdfs/${pdfId}`),
   updatePdfWeek: (courseId: string, pdfId: string, weekNumber: number) =>
     apiClient.patch(`/courses/${courseId}/pdfs/${pdfId}/week`, {
       week_number: weekNumber,
     }),
+  retryPdfProcessing: (courseId: string, pdfId: string) =>
+    apiClient.post(`/courses/${courseId}/pdfs/${pdfId}/retry`),
 };
 
 // Admin
