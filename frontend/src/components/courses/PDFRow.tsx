@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Loader2,
   Pencil,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import clsx from "clsx";
@@ -146,6 +147,19 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: () => coursesApi.retryPdfProcessing(courseId, pdf.id),
+    onSuccess: () => {
+      toast.success("PDF processing has been queued for retry");
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || "Failed to retry PDF processing");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["course-pdfs", courseId] });
+    },
+  });
+
   function handleWeekSave() {
     const clamped = Math.max(1, Math.min(20, weekDraft));
     if (clamped === (pdf.week_number ?? 1)) {
@@ -166,6 +180,8 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
         >
           {pdf.is_processed ? (
             <Check size={13} className="text-accent-sage" />
+          ) : pdf.processing_status === "failed" ? (
+            <RotateCcw size={13} className="text-accent-coral" />
           ) : (
             <Loader2 size={13} className="text-cream-200/30 animate-spin" />
           )}
@@ -216,7 +232,11 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
               <>
                 <span className="text-cream-200/35 text-[10px]">
                   {pdf.is_course_material ? "Course material" : `Week ${pdf.week_number}`}
-                  {pdf.is_processed ? " · Processed" : " · Processing..."}
+                  {pdf.is_processed
+                    ? " · Processed"
+                    : pdf.processing_status === "failed"
+                      ? " · Processing failed"
+                      : " · Processing..."}
                 </span>
                 {isAdmin && !pdf.is_course_material && (
                   <button
@@ -238,6 +258,22 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
             className="text-cream-200/30 hover:text-cream-200/60 transition-colors"
           >
             {showSummary ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        )}
+
+        {isAdmin && pdf.processing_status === "failed" && (
+          <button
+            onClick={() => retryMutation.mutate()}
+            disabled={retryMutation.isPending}
+            className="flex items-center gap-1 rounded-lg border border-accent-gold/20 bg-accent-gold/10 px-2 py-1 text-[10px] text-accent-gold/80 transition-colors hover:bg-accent-gold/20 hover:text-accent-gold disabled:opacity-40"
+            title={pdf.processing_error || "Retry PDF processing"}
+          >
+            {retryMutation.isPending ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <RotateCcw size={11} />
+            )}
+            Retry
           </button>
         )}
 

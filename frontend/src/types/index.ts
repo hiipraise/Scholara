@@ -82,6 +82,8 @@ export interface CoursePDF {
   is_course_material?: boolean;
   original_name: string;
   is_processed: boolean;
+  processing_status?: "pending" | "claimed" | "processing" | "done" | "failed";
+  processing_error?: string | null;
   summary: string | null;
   key_points: string[] | null;
   key_formulas: string[] | null;
