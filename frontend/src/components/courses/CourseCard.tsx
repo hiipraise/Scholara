@@ -12,6 +12,7 @@ import {
   FileText,
   Loader2,
   Plus,
+  RotateCcw,
   Trash2,
   Upload,
   X,
@@ -142,13 +143,12 @@ export default function CourseCard({
     setQueue((prev) => prev.filter((item) => item.id !== id));
   }
 
-  async function uploadAll() {
-    const pending = queue.filter((item) => item.status === "pending");
-    if (!pending.length) return;
+  async function uploadItems(items: QueueItem[]) {
+    if (!items.length) return;
     setIsUploading(true);
     let uploadedCount = 0;
 
-    for (const item of pending) {
+    for (const item of items) {
       setQueue((prev) =>
         prev.map((current) =>
           current.id === item.id
@@ -193,6 +193,17 @@ export default function CourseCard({
         `${uploadedCount} PDF${uploadedCount > 1 ? "s" : ""} uploaded — AI processing started`,
       );
     }
+  }
+
+  function uploadAll() {
+    return uploadItems(queue.filter((item) => item.status === "pending"));
+  }
+
+  function retryUpload(id: string) {
+    const item = queue.find((queuedItem) => queuedItem.id === id);
+    if (!item || item.status !== "error" || isUploading) return;
+
+    void uploadItems([item]);
   }
 
   const pendingCount = queue.filter((item) => item.status === "pending").length;
@@ -440,12 +451,29 @@ export default function CourseCard({
 
                           {(item.status === "pending" ||
                             item.status === "error") && (
-                            <button
-                              onClick={() => removeItem(item.id)}
-                              className="shrink-0 p-1 rounded text-cream-200/20 hover:text-accent-coral transition-colors"
-                            >
-                              <X size={12} />
-                            </button>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {item.status === "error" && (
+                                <button
+                                  type="button"
+                                  onClick={() => retryUpload(item.id)}
+                                  disabled={isUploading}
+                                  aria-label={`Retry upload of ${item.file.name}`}
+                                  title="Retry upload"
+                                  className="flex items-center gap-1 rounded px-1.5 py-1 text-[10px] text-accent-coral hover:bg-accent-coral/10 hover:text-accent-coral disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                                >
+                                  <RotateCcw size={12} /> Retry
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.id)}
+                                disabled={isUploading}
+                                aria-label={`Remove ${item.file.name}`}
+                                className="p-1 rounded text-cream-200/20 hover:text-accent-coral disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
