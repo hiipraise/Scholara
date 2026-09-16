@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   RefreshCw,
@@ -29,6 +30,7 @@ import FeedCompleteModal from "../components/feed/FeedCompleteModal";
 export default function HomePage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filterCourse, setFilterCourse] = useState<string | null>(null);
   const [filterDone, setFilterDone] = useState<"all" | "pending" | "done">(
     "all",
@@ -121,6 +123,39 @@ export default function HomePage() {
       toast.success(`Loaded ${data.total} focused questions`);
     },
   });
+
+  // Auto-trigger focused practice when navigated with ?practice=true&course=...&week=...
+  const hasAutoPracticed = useRef(false);
+  useEffect(() => {
+    if (hasAutoPracticed.current) return;
+    const shouldPractice = searchParams.get("practice") === "true";
+    if (!shouldPractice) return;
+    hasAutoPracticed.current = true;
+
+    const courseParam = searchParams.get("course");
+    const weekParam = searchParams.get("week");
+    const courseIds = courseParam ? [courseParam] : [];
+    const weekNum = weekParam ? Number(weekParam) : null;
+
+    setPracticeCourseIds(courseIds);
+    setPracticeWeek(weekNum);
+    setSearchParams({}, { replace: true });
+
+    // Directly call the API so we don't depend on stale closure state
+    feedApi
+      .getPractice({
+        course_ids: courseIds,
+        count: 30,
+        week_number: weekNum,
+      })
+      .then(({ data }) => {
+        setCustomFeed(data);
+        setHiddenQuestionIds([]);
+        setPracticeResults({});
+        setShowPracticeResultModal(false);
+        toast.success(`Loaded ${data.total} focused questions`);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshFeedMutation = useMutation({
     mutationFn: () => feedApi.refreshToday(),

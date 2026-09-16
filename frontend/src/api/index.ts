@@ -108,6 +108,10 @@ export const coursesApi = {
     }),
   retryPdfProcessing: (courseId: string, pdfId: string) =>
     apiClient.post(`/courses/${courseId}/pdfs/${pdfId}/retry`),
+  batchDeletePdfs: (courseId: string, pdfIds: string[]) =>
+    apiClient.post(`/courses/${courseId}/pdfs/batch-delete`, {
+      pdf_ids: pdfIds,
+    }),
 };
 
 // Admin

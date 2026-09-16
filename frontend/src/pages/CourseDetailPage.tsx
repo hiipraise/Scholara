@@ -18,7 +18,6 @@ import {
 import clsx from "clsx";
 import { coursesApi, feedApi } from "../api/index";
 import { COURSE_COLORS } from "../constants/courseColors";
-import toast from "react-hot-toast";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useOfflineDownload } from "../hooks/useOfflineDownload";
 import { getDownloadState, type DownloadState } from "../lib/contentDb";
@@ -360,17 +359,15 @@ export default function CourseDetailPage() {
                       Teach Me
                     </button>
                     {week.questionCount > 0 && (
-                      <button
-                        onClick={() => {
-                          toast.success(
-                            `Practice for Week ${week.week} coming soon!`,
-                          );
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cream-200/8 hover:bg-cream-200/12 text-cream-200/50 hover:text-cream-200/70 text-xs transition-colors"
-                      >
-                        <HelpCircle size={12} />
-                        Practice
-                      </button>
+                    <button
+                      onClick={() => {
+                        navigate(`/?practice=true&course=${courseId}&week=${week.week}`);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cream-200/8 hover:bg-cream-200/12 text-cream-200/50 hover:text-cream-200/70 text-xs transition-colors"
+                    >
+                      <HelpCircle size={12} />
+                      Practice
+                    </button>
                     )}
                   </>
                 ) : (

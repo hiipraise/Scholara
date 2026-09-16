@@ -16,6 +16,8 @@ import {
   Trash2,
   Upload,
   X,
+  SquareCheck,
+  SquareDashedBottom,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
@@ -56,6 +58,7 @@ export default function CourseCard({
   const [isUploading, setIsUploading] = useState(false);
   const [showDeleteCourseModal, setShowDeleteCourseModal] = useState(false);
   const [isOfflineAvailable, setIsOfflineAvailable] = useState(false);
+  const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
 
   // Check if this course is downloaded for offline
   useEffect(() => {
@@ -207,6 +210,72 @@ export default function CourseCard({
   }
 
   const pendingCount = queue.filter((item) => item.status === "pending").length;
+
+  // Multi-select helpers
+  const allPdfIds = pdfs?.map((p) => p.id) ?? [];
+  const allSelected = allPdfIds.length > 0 && selectedPdfIds.length === allPdfIds.length;
+  const someSelected = selectedPdfIds.length > 0 && !allSelected;
+
+  function togglePdfSelection(pdfId: string) {
+    setSelectedPdfIds((prev) =>
+      prev.includes(pdfId) ? prev.filter((id) => id !== pdfId) : [...prev, pdfId],
+    );
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedPdfIds([]);
+    } else {
+      setSelectedPdfIds(allPdfIds);
+    }
+  }
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: () => coursesApi.batchDeletePdfs(course.id, selectedPdfIds),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["course-pdfs", course.id] });
+      await qc.cancelQueries({ queryKey: ["courses", "all"] });
+
+      const previousPdfs = qc.getQueryData<CoursePDF[]>([
+        "course-pdfs",
+        course.id,
+      ]);
+      const previousCourses = qc.getQueryData<Course[]>(["courses", "all"]);
+
+      const deletedCount = selectedPdfIds.length;
+      qc.setQueryData<CoursePDF[]>(["course-pdfs", course.id], (current) =>
+        current ? current.filter((p) => !selectedPdfIds.includes(p.id)) : current,
+      );
+
+      qc.setQueryData<Course[]>(["courses", "all"], (current) => {
+        if (!current) return current;
+        return current.map((c) =>
+          c.id === course.id
+            ? { ...c, pdf_count: Math.max(0, c.pdf_count - deletedCount) }
+            : c,
+        );
+      });
+
+      setSelectedPdfIds([]);
+      return { previousPdfs, previousCourses };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previousPdfs) {
+        qc.setQueryData(["course-pdfs", course.id], context.previousPdfs);
+      }
+      if (context?.previousCourses) {
+        qc.setQueryData(["courses", "all"], context.previousCourses);
+      }
+      toast.error(err.response?.data?.detail || "Failed to delete PDFs");
+    },
+    onSuccess: () => {
+      toast.success("PDFs deleted");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["course-pdfs", course.id] });
+      qc.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
 
   return (
     <motion.div
@@ -526,8 +595,30 @@ export default function CourseCard({
               )}
 
               <div>
-                <div className="text-cream-200/40 text-xs font-semibold uppercase tracking-wider mb-3">
-                  Uploaded PDFs ({pdfs?.length ?? 0})
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-cream-200/40 text-xs font-semibold uppercase tracking-wider">
+                    Uploaded PDFs ({pdfs?.length ?? 0})
+                  </div>
+                  {isAdmin && pdfs && pdfs.length > 0 && (
+                    <button
+                      onClick={toggleSelectAll}
+                      className={clsx(
+                        "flex items-center gap-1.5 text-xs transition-colors",
+                        allSelected
+                          ? "text-accent-sky"
+                          : someSelected
+                            ? "text-accent-sky/70"
+                            : "text-cream-200/30 hover:text-cream-200/55",
+                      )}
+                    >
+                      {allSelected ? (
+                        <SquareCheck size={12} />
+                      ) : (
+                        <SquareDashedBottom size={12} />
+                      )}
+                      {allSelected ? "Deselect All" : "Select All"}
+                    </button>
+                  )}
                 </div>
                 {pdfsLoading ? (
                   <div className="space-y-2">
@@ -543,6 +634,8 @@ export default function CourseCard({
                         pdf={pdf}
                         courseId={course.id}
                         isAdmin={isAdmin}
+                        selected={selectedPdfIds.includes(pdf.id)}
+                        onToggleSelect={() => togglePdfSelection(pdf.id)}
                       />
                     ))}
                   </div>
@@ -551,6 +644,37 @@ export default function CourseCard({
                     No PDFs uploaded yet.
                   </p>
                 )}
+                <AnimatePresence>
+                  {selectedPdfIds.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden mt-3"
+                    >
+                      <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-accent-coral/15 bg-accent-coral/5">
+                        <span className="text-cream-200/60 text-xs">
+                          <span className="text-cream-200/80 font-semibold">{selectedPdfIds.length}</span>
+                          {" "}PDF{selectedPdfIds.length !== 1 ? "s" : ""} selected
+                        </span>
+                        <button
+                          onClick={() => {
+                            batchDeleteMutation.mutate();
+                          }}
+                          disabled={batchDeleteMutation.isPending}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-coral/15 hover:bg-accent-coral/25 text-accent-coral text-xs font-medium transition-colors disabled:opacity-40"
+                        >
+                          {batchDeleteMutation.isPending ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                          Delete Selected
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>

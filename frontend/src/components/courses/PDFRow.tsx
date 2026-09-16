@@ -19,9 +19,11 @@ interface PDFRowProps {
   pdf: CoursePDF;
   courseId: string;
   isAdmin: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
+export default function PDFRow({ pdf, courseId, isAdmin, selected, onToggleSelect }: PDFRowProps) {
   const qc = useQueryClient();
   const [showSummary, setShowSummary] = useState(false);
   const [editingWeek, setEditingWeek] = useState(false);
@@ -172,6 +174,27 @@ export default function PDFRow({ pdf, courseId, isAdmin }: PDFRowProps) {
   return (
     <div className="rounded-xl border border-cream-200/8 p-3">
       <div className="flex items-center gap-3">
+        {isAdmin && onToggleSelect && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+            className={clsx(
+              "w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-colors",
+              selected
+                ? "bg-accent-sky border-accent-sky text-white"
+                : "border-cream-200/20 hover:border-cream-200/40",
+            )}
+            title={selected ? "Deselect PDF" : "Select PDF"}
+          >
+            {selected && (
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+        )}
         <div
           className={clsx(
             "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",

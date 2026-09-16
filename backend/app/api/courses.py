@@ -288,6 +288,33 @@ class PdfWeekUpdate(BaseModel):
     week_number: int
 
 
+class BatchDeleteRequest(BaseModel):
+    pdf_ids: list[str]
+
+
+@router.post("/{course_id}/pdfs/batch-delete")
+async def batch_delete_pdfs(
+    course_id: str,
+    body: BatchDeleteRequest,
+    admin: dict = Depends(get_admin_user),
+):
+    if not body.pdf_ids:
+        raise HTTPException(status_code=400, detail="No PDF IDs provided")
+
+    oids = []
+    for pid in body.pdf_ids:
+        try:
+            oids.append(ObjectId(pid))
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid PDF id: {pid}")
+
+    result = await pdfs_col().update_many(
+        {"_id": {"$in": oids}, "course_id": course_id, "is_deleted": {"$ne": True}},
+        {"$set": {"is_deleted": True}},
+    )
+    return {"message": f"{result.modified_count} PDF(s) deleted", "deleted_count": result.modified_count}
+
+
 @router.patch("/{course_id}/pdfs/{pdf_id}/week")
 async def update_pdf_week(
     course_id: str,
