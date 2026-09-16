@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import {
   BookOpen,
@@ -32,6 +32,12 @@ export default function FloatingBentoMenu() {
   const constraintsRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [dragged, setDragged] = useState(false);
+  const location = useLocation();
+
+  // Close menu on route change
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
 
   const items = useMemo(() => {
     const isAdmin = user?.role === "admin" || user?.role === "superadmin";
@@ -84,7 +90,7 @@ export default function FloatingBentoMenu() {
                   <p className="text-[10px] uppercase tracking-[0.24em] text-cream-200/30">Bento</p>
                   <h2 className="font-display text-lg font-semibold text-cream-200">Scholara</h2>
                 </div>
-                <button onClick={() => setOpen(false)} className="rounded-xl p-2 text-cream-200/45 hover:bg-cream-200/8 hover:text-cream-200" aria-label="Close menu">
+                <button onPointerDown={(e) => { e.stopPropagation(); }} onClick={() => setOpen(false)} className="rounded-xl p-2 text-cream-200/45 hover:bg-cream-200/8 hover:text-cream-200" aria-label="Close menu">
                   <X size={16} />
                 </button>
               </div>
@@ -98,13 +104,13 @@ export default function FloatingBentoMenu() {
                 </div>
                 <nav className="grid grid-cols-2 gap-2">
                   {items.map(({ path, label, icon: Icon, exact }) => (
-                    <NavLink key={path} to={path} end={exact} onClick={() => setOpen(false)} className={({ isActive }) => clsx("group min-h-24 rounded-2xl border p-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-gold/40", isActive ? "border-cream-200/18 bg-cream-200/12 text-cream-200" : "border-cream-200/9 bg-cream-200/4 text-cream-200/58 hover:border-cream-200/18 hover:bg-cream-200/8 hover:text-cream-200") }>
+                    <NavLink key={path} to={path} end={exact} onPointerDown={(e) => { e.stopPropagation(); }} onClick={() => setOpen(false)} className={({ isActive }) => clsx("group min-h-24 rounded-2xl border p-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent-gold/40", isActive ? "border-cream-200/18 bg-cream-200/12 text-cream-200" : "border-cream-200/9 bg-cream-200/4 text-cream-200/58 hover:border-cream-200/18 hover:bg-cream-200/8 hover:text-cream-200") }>
                       <Icon size={20} />
                       <div className="mt-5 text-sm font-medium">{label}</div>
                     </NavLink>
                   ))}
                 </nav>
-                <button onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cream-200/10 bg-cream-200/4 px-4 py-3 text-sm text-cream-200/50 transition-colors hover:bg-cream-200/8 hover:text-cream-200">
+                <button onPointerDown={(e) => { e.stopPropagation(); }} onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-cream-200/10 bg-cream-200/4 px-4 py-3 text-sm text-cream-200/50 transition-colors hover:bg-cream-200/8 hover:text-cream-200">
                   <LogOut size={16} /> Sign Out
                 </button>
               </div>
