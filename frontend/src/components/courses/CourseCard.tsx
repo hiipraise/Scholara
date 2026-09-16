@@ -230,9 +230,15 @@ export default function CourseCard({
     }
   }
 
+  // Use a ref so the mutationFn always reads the latest selected IDs
+  // even if onMutate clears the state before the network call runs.
+  const selectedPdfIdsRef = useRef<string[]>([]);
+  selectedPdfIdsRef.current = selectedPdfIds;
+
   const batchDeleteMutation = useMutation({
-    mutationFn: () => coursesApi.batchDeletePdfs(course.id, selectedPdfIds),
-    onMutate: async () => {
+    mutationFn: (ids: string[]) =>
+      coursesApi.batchDeletePdfs(course.id, ids),
+    onMutate: async (ids: string[]) => {
       await qc.cancelQueries({ queryKey: ["course-pdfs", course.id] });
       await qc.cancelQueries({ queryKey: ["courses", "all"] });
 
@@ -242,9 +248,9 @@ export default function CourseCard({
       ]);
       const previousCourses = qc.getQueryData<Course[]>(["courses", "all"]);
 
-      const deletedCount = selectedPdfIds.length;
+      const deletedCount = ids.length;
       qc.setQueryData<CoursePDF[]>(["course-pdfs", course.id], (current) =>
-        current ? current.filter((p) => !selectedPdfIds.includes(p.id)) : current,
+        current ? current.filter((p) => !ids.includes(p.id)) : current,
       );
 
       qc.setQueryData<Course[]>(["courses", "all"], (current) => {
@@ -659,7 +665,7 @@ export default function CourseCard({
                         </span>
                         <button
                           onClick={() => {
-                            batchDeleteMutation.mutate();
+                            batchDeleteMutation.mutate([...selectedPdfIdsRef.current]);
                           }}
                           disabled={batchDeleteMutation.isPending}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-coral/15 hover:bg-accent-coral/25 text-accent-coral text-xs font-medium transition-colors disabled:opacity-40"
