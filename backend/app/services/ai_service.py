@@ -1,16 +1,17 @@
 """
 Nexus Core — AI Engine for Scholara
-Supports Groq (free), Google Gemini (free), and an explicit local-dev mock mode.
+Supports Groq (free) and Google Gemini (free) for PDF-grounded generation.
 
 Free API keys:
   Groq   → https://console.groq.com          (no billing, generous limits)
   Gemini → https://aistudio.google.com/apikey (free tier: 15 RPM, 1M TPD)
 
-Set AI_PROVIDER in .env to "groq" or "gemini". Local mock questions require AI_PROVIDER=mock and ALLOW_MOCK_QUESTION_GENERATION=true.
+Set AI_PROVIDER in .env to "groq" or "gemini". Question generation never uses mock or fallback content.
 """
 import json
 import re
 import logging
+import asyncio
 from typing import Optional, Any
 import fitz  # PyMuPDF
 
@@ -21,6 +22,49 @@ from app.services.intelligence_service import infer_course_profile
 logger = logging.getLogger(__name__)
 
 MIN_QUESTION_SOURCE_CHARS = 500
+QUESTION_BATCH_SIZE = 5
+QUESTION_MAX_BATCH_ATTEMPTS = 12
+
+
+class QuestionGenerationError(RuntimeError):
+    """Raised when a PDF cannot produce the complete requested question set."""
+
+
+def _http_status(error: Exception) -> Optional[int]:
+    """Get an HTTP status from provider SDK errors without coupling to one SDK."""
+    for attribute in ("status_code", "status"):
+        status = getattr(error, attribute, None)
+        if isinstance(status, int):
+            return status
+    match = re.search(r"\b(413|429)\b", str(error))
+    return int(match.group(1)) if match else None
+
+
+def _normalised_source(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _split_source_text(text: str, max_chars: int) -> list[str]:
+    """Split on paragraph boundaries where possible, retaining all PDF content."""
+    chunks: list[str] = []
+    current = ""
+    for part in re.split(r"\n\s*\n", text):
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) > max_chars:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(part[i:i + max_chars] for i in range(0, len(part), max_chars))
+        elif current and len(current) + len(part) + 2 > max_chars:
+            chunks.append(current)
+            current = part
+        else:
+            current = f"{current}\n\n{part}".strip()
+    if current:
+        chunks.append(current)
+    return chunks or [text]
 
 
 def _mock_questions_allowed() -> bool:
@@ -434,10 +478,10 @@ QUESTION_SYSTEM = (
     "You are Nexus Core, an exam-intelligence AI that generates deep, exam-quality MCQ questions. "
     "Balance theoretical, application, and calculation styles using the supplied course profile. "
     "Always include robust explanations and steps for calculation/application questions. "
-    "Respond ONLY with valid JSON — no markdown."
+    "Respond ONLY with valid JSON — no markdown. "
     "Avoid generic placeholder templates and repeated boilerplate across questions. "
     "Do NOT produce vague options like 'The primary principle of X...' or 'None of the above' as repeated defaults. "
-    "If content is insufficient to craft high-quality distinct questions, return fewer well-formed items rather than many low-quality templates."
+    "If the excerpt cannot support a question, return no item rather than inventing one."
 )
 
 QUESTION_PROMPT = """\
@@ -454,6 +498,8 @@ Adaptive profile:
 
 Rules:
 - Use both the lecture content and topic expansion depth.
+- Every question, answer, and explanation must be grounded in this supplied excerpt only; do not use general knowledge.
+- Include `source_excerpt`: a short, verbatim phrase from the supplied excerpt that supports the correct answer.
 - Include realistic exam-style phrasing.
 - 4 options per question labelled A, B, C, D
 - Respect the requested style mix and difficulty target.
@@ -479,7 +525,8 @@ Return JSON:
       "topic": "...",
       "question_style": "theory|application|calculation",
       "depth_level": "recall|understand|apply|analyze",
-      "solution_steps": ["...", "..."]
+      "solution_steps": ["...", "..."],
+      "source_excerpt": "exact words copied from the lecture content"
     }}
   ]
 }}
@@ -499,165 +546,100 @@ async def generate_questions(
     adaptive_context: Optional[dict[str, Any]] = None,
     course_id: Optional[str] = None,
 ) -> list[dict]:
-    truncated = pdf_text[:6000]
     adaptive_context = adaptive_context or {}
     feedback_notes = await _recent_model_feedback(course_id, course_code, course_title)
 
-    if _mock_questions_allowed():
-        logger.warning(
-            "Using explicit local mock question generation for %s week %s",
-            course_code,
-            week_number,
-        )
-        return _mock_questions(course_code, course_title, week_number, count, adaptive_context)
-
-    if len(truncated.strip()) < MIN_QUESTION_SOURCE_CHARS:
+    if len(pdf_text.strip()) < MIN_QUESTION_SOURCE_CHARS:
         logger.error(
             "Question generation blocked for %s week %s: extracted PDF text is too short (%s chars)",
             course_code,
             week_number,
-            len(truncated.strip()),
+            len(pdf_text.strip()),
         )
         raise ValueError(
             f"Insufficient extracted PDF text for {course_code} week {week_number}; cannot generate real questions"
         )
 
-    try:
-        raw = await call_ai(
-            QUESTION_PROMPT.format(
-                count=count,
-                course_code=course_code,
-                course_title=course_title,
-                week_number=week_number,
-                is_formula_heavy=adaptive_context.get("is_formula_heavy", False),
-                mix_targets=adaptive_context.get("mix_targets", {"calculation": 25, "application": 40, "theory": 35}),
-                difficulty_targets=adaptive_context.get("difficulty_targets", {"easy": 30, "medium": 50, "hard": 20}),
-                explanation_mode=adaptive_context.get("explanation_mode", "exam_style"),
-                topics=adaptive_context.get("topics", []),
-                key_formulas=adaptive_context.get("key_formulas", []),
-                feedback_notes=feedback_notes,
-                text=truncated,
-            ),
-            QUESTION_SYSTEM,
-            # 20 detailed MCQs (explanations + solution_steps) routinely exceed
-            # 3500 tokens; llama-3.1-70b-versatile caps output at 8192.
-            max_tokens=8000,
-        )
-        data = json.loads(_clean_json(raw))
-        qs = data.get("questions", [])
-        normalized: list[dict] = []
-        for q in qs:
-            normalized.append({
-                "question_text": q.get("question_text", "").strip(),
-                "question_type": q.get("question_type", "mcq"),
-                "options": q.get("options") or {},
-                "correct_answer": (q.get("correct_answer") or "A").upper(),
-                "explanation": q.get("explanation", ""),
-                "difficulty": q.get("difficulty", "medium"),
-                "topic": q.get("topic", ""),
+    source_chunks = _split_source_text(pdf_text, 6000)
+    questions: list[dict] = []
+    seen_stems: set[str] = set()
+
+    # Keep asking for the missing remainder when a model under-produces.  This
+    # allows a provider that returns one item per response to still satisfy 20.
+    for batch_attempt in range(max(QUESTION_MAX_BATCH_ATTEMPTS, count)):
+        if len(questions) >= count:
+            return questions[:count]
+
+        requested = min(QUESTION_BATCH_SIZE, count - len(questions))
+        source_chunk = source_chunks[batch_attempt % len(source_chunks)]
+        # A 413 means this particular excerpt is too large for the provider.
+        # Retry the same batch with successively smaller excerpt windows.
+        for provider_attempt in range(3):
+            try:
+                raw = await call_ai(
+                    QUESTION_PROMPT.format(
+                        count=requested, course_code=course_code, course_title=course_title,
+                        week_number=week_number,
+                        is_formula_heavy=adaptive_context.get("is_formula_heavy", False),
+                        mix_targets=adaptive_context.get("mix_targets", {"calculation": 25, "application": 40, "theory": 35}),
+                        difficulty_targets=adaptive_context.get("difficulty_targets", {"easy": 30, "medium": 50, "hard": 20}),
+                        explanation_mode=adaptive_context.get("explanation_mode", "exam_style"),
+                        topics=adaptive_context.get("topics", []), key_formulas=adaptive_context.get("key_formulas", []),
+                        feedback_notes=feedback_notes, text=source_chunk,
+                    ),
+                    QUESTION_SYSTEM,
+                    # Small batches prevent a truncated response from turning 20 requested questions into one.
+                    max_tokens=min(3500, max(1200, requested * 650)),
+                )
+                data = json.loads(_clean_json(raw))
+                raw_questions = data.get("questions", [])
+                break
+            except Exception as exc:
+                status = _http_status(exc)
+                if status == 413 and len(source_chunk) > MIN_QUESTION_SOURCE_CHARS:
+                    source_chunk = source_chunk[:max(MIN_QUESTION_SOURCE_CHARS, len(source_chunk) // 2)]
+                    logger.warning("Groq rejected question context as too large; retrying with %d chars", len(source_chunk))
+                elif status == 429:
+                    delay = 2 ** provider_attempt
+                    logger.warning("Groq rate limited question generation; retrying in %ds", delay)
+                    await asyncio.sleep(delay)
+                else:
+                    raise QuestionGenerationError(f"Question generation provider failed: {exc}") from exc
+                if provider_attempt == 2:
+                    raise QuestionGenerationError(f"Question generation provider failed after retry: {exc}") from exc
+        else:  # pragma: no cover - the loop always breaks or raises
+            raw_questions = []
+
+        source_normalized = _normalised_source(source_chunk)
+        for q in raw_questions if isinstance(raw_questions, list) else []:
+            options = q.get("options") or {}
+            correct_answer = str(q.get("correct_answer") or "").upper()
+            stem = str(q.get("question_text") or "").strip()
+            excerpt = str(q.get("source_excerpt") or "").strip()
+            stem_key = _normalised_source(stem)
+            if (
+                not stem or stem_key in seen_stems or correct_answer not in {"A", "B", "C", "D"}
+                or set(options) != {"A", "B", "C", "D"} or not all(str(v).strip() for v in options.values())
+                or len(excerpt) < 12 or _normalised_source(excerpt) not in source_normalized
+            ):
+                logger.warning("Discarded an ungrounded, malformed, or duplicate AI question")
+                continue
+            seen_stems.add(stem_key)
+            questions.append({
+                "question_text": stem, "question_type": q.get("question_type", "mcq"),
+                "options": options, "correct_answer": correct_answer,
+                "explanation": str(q.get("explanation") or "").strip(),
+                "difficulty": q.get("difficulty", "medium"), "topic": q.get("topic", ""),
                 "question_style": q.get("question_style", "application"),
                 "depth_level": q.get("depth_level", "apply"),
-                "solution_steps": q.get("solution_steps", []),
-                "source": "ai",
+                "solution_steps": q.get("solution_steps", []), "source_excerpt": excerpt, "source": "ai",
             })
-        qs = normalized
-        if len(qs) < count:
-            logger.warning(
-                "AI returned fewer questions than requested for %s week %s: requested=%s returned=%s",
-                course_code,
-                week_number,
-                count,
-                len(qs),
-            )
-        if not qs:
-            raise ValueError(f"AI returned no usable questions for {course_code} week {week_number}")
-        return qs[:count]
-    except Exception:
-        logger.exception(
-            "Question generation failed for %s week %s; refusing to create placeholder questions",
-            course_code,
-            week_number,
-        )
-        raise
+            if len(questions) == count:
+                return questions
 
-
-def _mock_questions(
-    course_code: str,
-    course_title: str,
-    week_number: int,
-    count: int,
-    adaptive_context: Optional[dict[str, Any]] = None,
-) -> list[dict]:
-    adaptive_context = adaptive_context or {}
-    style_cycle = ["application", "theory", "application", "calculation"] \
-        if adaptive_context.get("is_formula_heavy") else ["application", "theory", "application", "theory"]
-    topics = [
-        "Fundamental Concepts", "Core Definitions", "Applied Theory",
-        "Problem Solving", "Key Algorithms", "Data Structures",
-        "Mathematical Foundations", "Systems Design",
-    ]
-    difficulties = ["easy", "medium", "medium", "hard"]
-    questions = []
-    for i in range(count):
-        topic = topics[i % len(topics)]
-        diff  = difficulties[i % len(difficulties)]
-        style = style_cycle[i % len(style_cycle)]
-        if style == "calculation":
-            question_text = (
-                f"[{course_code} | Week {week_number} | Q{i+1}] "
-                f"Given a standard {topic} setup, compute the correct result from the provided options."
-            )
-            explanation = (
-                f"Use the relevant formula/operation chain for {topic}. "
-                f"Substitute values carefully, perform operations in order, and verify units/logic at the end."
-            )
-            steps = [
-                "Identify the governing formula or rule from the topic.",
-                "Substitute known values and simplify step by step.",
-                "Check the final option against constraints/units.",
-            ]
-        else:
-            question_text = (
-                f"[{course_code} | Week {week_number} | Q{i+1}] "
-                f"Which statement best describes a key concept from '{topic}' "
-                f"as covered in {course_title}?"
-            )
-            explanation = (
-                f"Option A correctly identifies the primary principle. "
-                f"This concept is foundational to {course_title} Week {week_number}. "
-                f"Review your lecture notes to reinforce this understanding."
-            )
-            steps = [
-                "Recall the core definition used in this topic.",
-                "Match the definition to the best option and reject distractors.",
-            ]
-        questions.append({
-            "question_text": question_text,
-            "question_type": "mcq",
-            "options": _generate_mock_options(topic, i),
-            "correct_answer": "A",
-            "explanation": explanation,
-            "difficulty": diff,
-            "topic": topic,
-            "question_style": style,
-            "depth_level": "apply" if style != "theory" else "understand",
-            "solution_steps": steps,
-            "source": "mock",
-        })
-    return questions
-
-
-def _generate_mock_options(topic: str, index: int) -> dict:
-    # Create more diverse, plausible distractors instead of repeating a template
-    base = [
-        f"A fundamental statement describing the core idea of {topic}",
-        f"A nuanced implication or typical exception related to {topic}",
-        f"A related concept or consequence sometimes confused with {topic}",
-        f"An unrelated or incorrect statement not supported by {topic}",
-    ]
-    # Rotate order slightly by index to vary which option is correct in mocks
-    ordered = base[index % len(base):] + base[: index % len(base)]
-    return {"A": ordered[0], "B": ordered[1], "C": ordered[2], "D": ordered[3]}
+    raise QuestionGenerationError(
+        f"Generated {len(questions)} of {count} grounded questions for {course_code} week {week_number}; refusing incomplete output"
+    )
 
 
 # ── Full PDF Pipeline ──────────────────────────────────────────────────────

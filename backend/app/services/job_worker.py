@@ -86,6 +86,7 @@ async def _process_pdf_bg(
     week_number: int | None,
     course_id: str,
     is_course_material: bool = False,
+    question_count: int = 20,
 ) -> None:
     """
     Execute the full PDF processing pipeline for a single job.
@@ -111,6 +112,7 @@ async def _process_pdf_bg(
             process_pdf_file(
                 file_path, course_code, course_title, week_number or 0,
                 course_id=course_id,
+                question_count=question_count,
                 generate_questions_for_pdf=not is_course_material,
             ),
             timeout=settings.PDF_PROCESSING_TIMEOUT_SECONDS,
@@ -129,6 +131,10 @@ async def _process_pdf_bg(
         )
 
         # ── Persist generated questions ────────────────────────────────
+        if not is_course_material and len(data["questions"]) != question_count:
+            raise RuntimeError(
+                f"Refusing to save incomplete question set: expected {question_count}, got {len(data['questions'])}"
+            )
         q_docs = []
         for q in ([] if is_course_material else data["questions"]):
             q_docs.append({
@@ -145,6 +151,7 @@ async def _process_pdf_bg(
                 "question_style": q.get("question_style", "application"),
                 "depth_level": q.get("depth_level", "apply"),
                 "solution_steps": q.get("solution_steps", []),
+                "source_excerpt": q.get("source_excerpt", ""),
                 "is_active": True,
                 "source": "ai",
             })
@@ -257,6 +264,7 @@ async def _poll_loop(poll_interval: float = 5.0) -> None:
                     week_number=job.get("week_number"),
                     course_id=job["course_id"],
                     is_course_material=job.get("is_course_material", False),
+                    question_count=int(job.get("question_count", 20)),
                 )
             else:
                 # ── No job available — wait and try again ──────────────
