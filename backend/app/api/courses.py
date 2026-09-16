@@ -203,6 +203,7 @@ async def upload_pdf(
         "status": "pending",
         "attempt_count": 0,
         "max_attempts": 3,
+        "question_count": 20,
         "course_id": course_id,
         "course_code": course["code"],
         "course_title": course["title"],
