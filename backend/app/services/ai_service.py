@@ -1,12 +1,17 @@
 """
 Nexus Core — AI Engine for Scholara
-Supports Groq (free) and Google Gemini (free) for PDF-grounded generation.
+Single-provider AI: Groq only. Get a free key at https://console.groq.com.
+There is no automatic multi-provider fallback and no mock/placeholder content —
+when the provider fails, the call raises so the caller can retry properly.
 
-Free API keys:
-  Groq   → https://console.groq.com          (no billing, generous limits)
-  Gemini → https://aistudio.google.com/apikey (free tier: 15 RPM, 1M TPD)
+Model: ``openai/gpt-oss-20b`` (see GROQ_MODEL). The retired
+llama-3.1-70b-versatile / llama-3.1-70b-instant models are not supported.
 
-Set AI_PROVIDER in .env to "groq" or "gemini". Question generation never uses mock or fallback content.
+Assessment types (per course, see courses collection):
+  mcq    → 20 multiple-choice questions per uploaded PDF
+  mixed  → 20 multiple-choice questions, theory-biased mix
+  theory → at most 5 open-ended theory questions per uploaded PDF
+  essay  → at most 5 open-ended essay questions per uploaded PDF
 """
 import json
 import re
@@ -24,6 +29,29 @@ logger = logging.getLogger(__name__)
 MIN_QUESTION_SOURCE_CHARS = 500
 QUESTION_BATCH_SIZE = 5
 QUESTION_MAX_BATCH_ATTEMPTS = 12
+
+# ── Assessment types ───────────────────────────────────────────────────────
+# MCQ courses keep the full 20-question bank; essay/theory assessments are
+# capped at 5 open-ended questions per uploaded PDF.
+ASSESSMENT_TYPES = ("mcq", "mixed", "theory", "essay")
+OPEN_ENDED_ASSESSMENT_TYPES = ("theory", "essay")
+MCQ_QUESTION_COUNT = 20
+OPEN_QUESTION_COUNT = 5
+
+
+def normalise_assessment_type(value: Optional[str]) -> str:
+    """Coerce a stored/requested assessment type to a supported value."""
+    value = (value or "mcq").strip().lower()
+    return value if value in ASSESSMENT_TYPES else "mcq"
+
+
+def is_open_ended(assessment_type: Optional[str]) -> bool:
+    return normalise_assessment_type(assessment_type) in OPEN_ENDED_ASSESSMENT_TYPES
+
+
+def question_count_for(assessment_type: Optional[str]) -> int:
+    """Maximum questions a single uploaded PDF should produce."""
+    return OPEN_QUESTION_COUNT if is_open_ended(assessment_type) else MCQ_QUESTION_COUNT
 
 
 class QuestionGenerationError(RuntimeError):
@@ -67,11 +95,6 @@ def _split_source_text(text: str, max_chars: int) -> list[str]:
     return chunks or [text]
 
 
-def _mock_questions_allowed() -> bool:
-    return settings.APP_ENV.lower() != "production" and settings.AI_PROVIDER.lower() == "mock" and settings.ALLOW_MOCK_QUESTION_GENERATION
-
-
-
 # ── PDF Text Extraction ────────────────────────────────────────────────────
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -106,39 +129,18 @@ async def _call_groq(prompt: str, system: str = "", max_tokens: int = 2000) -> s
     return resp.choices[0].message.content or ""
 
 
-# ── Provider: Google Gemini ────────────────────────────────────────────────
+# ── Unified caller (Groq only) ─────────────────────────────────────────────
 
-async def _call_gemini(prompt: str, system: str = "", max_tokens: int = 2000) -> str:
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name=settings.GEMINI_MODEL,
-        system_instruction=system or None,
-    )
-    full_prompt = prompt
-    resp = await model.generate_content_async(
-        full_prompt,
-        generation_config={"max_output_tokens": max_tokens, "temperature": 0.7},
-    )
-    return resp.text or ""
+class AIProviderError(RuntimeError):
+    """Raised when the AI provider request cannot be completed."""
 
-
-# ── Unified caller ─────────────────────────────────────────────────────────
 
 async def call_ai(prompt: str, system: str = "", max_tokens: int = 2000) -> str:
-    provider = settings.AI_PROVIDER.lower()
-
-    if provider == "groq":
-        if not settings.GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY not set. Get a free key at https://console.groq.com")
-        return await _call_groq(prompt, system, max_tokens)
-
-    if provider == "gemini":
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY not set. Get a free key at https://aistudio.google.com/apikey")
-        return await _call_gemini(prompt, system, max_tokens)
-
-    raise ValueError(f"Unknown AI_PROVIDER '{provider}'. Use 'groq', 'gemini', or 'mock'.")
+    if not settings.GROQ_API_KEY:
+        raise AIProviderError(
+            "GROQ_API_KEY is not set. Add a free key from https://console.groq.com"
+        )
+    return await _call_groq(prompt, system, max_tokens)
 
 
 def clean_json(raw: str) -> str:
@@ -351,9 +353,7 @@ async def generate_study_cycle(level: str, semester: int, courses: list[dict[str
     if not normalized_courses:
         return []
 
-    if settings.AI_PROVIDER == "mock" or (
-        not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY
-    ):
+    if not settings.GROQ_API_KEY:
         return _fallback_study_cycle(normalized_courses)
 
     try:
@@ -419,60 +419,17 @@ Respond ONLY with valid JSON."""
 
 
 async def generate_summary(pdf_text: str) -> dict:
+    """Analyse lecture text into summary/profile data via the AI provider.
+
+    Raises on failure (no placeholder fallback) so the caller can retry the
+    analysis stage without losing the already-extracted PDF text.
+    """
     truncated = pdf_text[:5000]
-    if settings.AI_PROVIDER == "mock" or (
-        not settings.GROQ_API_KEY and not settings.GEMINI_API_KEY
-    ):
-        return _mock_summary()
-
-    try:
-        raw = await call_ai(SUMMARY_PROMPT.format(text=truncated), SUMMARY_SYSTEM, 1200)
-        return json.loads(_clean_json(raw))
-    except Exception as e:
-        logger.error(f"Summary generation failed: {e}")
-        return _mock_summary()
+    raw = await call_ai(SUMMARY_PROMPT.format(text=truncated), SUMMARY_SYSTEM, 1200)
+    return json.loads(_clean_json(raw))
 
 
-def _mock_summary() -> dict:
-    return {
-        "summary": (
-            "This lecture covers fundamental concepts from the course material. "
-            "Students should review the definitions, theorems, and worked examples provided. "
-            "Mastering these topics is essential for coursework and examination preparation."
-        ),
-        "key_points": [
-            "Review all definitions introduced in this lecture",
-            "Understand the relationship between core concepts",
-            "Practice applying theorems to example problems",
-            "Note important distinctions highlighted by the lecturer",
-        ],
-        "key_formulas": ["See lecture slides for specific formulas"],
-        "formula_cards": [
-            {
-                "formula_name": "Core lecture formula",
-                "expression": "See lecture slides for specific formulas",
-                "variables": [],
-                "units": [],
-                "conditions": "Use the formula introduced in the lecture notes",
-                "common_mistakes": ["Mixing the formula with a related definition"],
-                "worked_example": "Apply the lecture formula to a representative problem from the notes.",
-            }
-        ],
-        "topics": ["Core Concepts", "Definitions", "Applications"],
-        "profile": {
-            "focus_label": "balanced",
-            "summary": "The lecture is balanced between understanding and application.",
-            "is_formula_heavy": False,
-            "mix_targets": {"calculation": 20, "application": 45, "theory": 35},
-            "difficulty_targets": {"easy": 30, "medium": 50, "hard": 20},
-            "explanation_mode": "exam_style",
-            "revision_priority": "Core definitions and lecture applications",
-            "study_tip": "Review the lecture once, then practice from the worked examples.",
-        },
-    }
-
-
-# ── Question Prompt ────────────────────────────────────────────────────────
+# ── Question Prompts ───────────────────────────────────────────────────────
 
 QUESTION_SYSTEM = (
     "You are Nexus Core, an exam-intelligence AI that generates deep, exam-quality MCQ questions. "
@@ -483,6 +440,26 @@ QUESTION_SYSTEM = (
     "Do NOT produce vague options like 'The primary principle of X...' or 'None of the above' as repeated defaults. "
     "If the excerpt cannot support a question, return no item rather than inventing one."
 )
+
+OPEN_QUESTION_SYSTEM = (
+    "You are Nexus Core, an exam-intelligence AI that writes deep, exam-quality "
+    "open-ended questions for written assessments. "
+    "Ground every question, model answer, and marking point strictly in the supplied "
+    "lecture excerpt — do not add outside knowledge. "
+    "Respond ONLY with valid JSON — no markdown. "
+    "If the excerpt cannot support a question, return no item rather than inventing one."
+)
+
+OPEN_ENDED_GUIDANCE = {
+    "theory": (
+        "These are THEORY questions: ask the student to explain, contrast, justify or "
+        "critique concepts, principles and their relationships."
+    ),
+    "essay": (
+        "These are ESSAY questions: ask for a structured written discussion with an "
+        "argument, supporting evidence drawn from the lecture, and a clear conclusion."
+    ),
+}
 
 QUESTION_PROMPT = """\
 Generate exactly {count} multiple-choice questions from the lecture content below.
@@ -537,16 +514,109 @@ LECTURE CONTENT:
 Respond ONLY with valid JSON."""
 
 
+OPEN_QUESTION_PROMPT = """\
+Write exactly {count} {kind} questions from the lecture content below.
+Course: {course_code} — {course_title}
+Week: {week_number}
+
+{guidance}
+
+Rules:
+- Every question must require a written, explanatory answer — do NOT provide options.
+- Ground each question, model answer, and marking point in the supplied excerpt only.
+- Include `source_excerpt`: a short, verbatim phrase from the supplied excerpt that supports the question.
+- Provide a model answer of 4-8 sentences and a list of marking/outline points.
+- Use realistic exam-style phrasing.
+
+Previously flagged feedback to avoid repeating:
+{feedback_notes}
+
+Return JSON:
+{{
+  "questions": [
+    {{
+      "question_text": "...",
+      "question_type": "{kind}",
+      "model_answer": "...",
+      "marking_points": ["...", "..."],
+      "difficulty": "medium",
+      "topic": "...",
+      "question_style": "theory",
+      "depth_level": "analyze",
+      "source_excerpt": "exact words copied from the lecture content"
+    }}
+  ]
+}}
+
+LECTURE CONTENT:
+{text}
+
+Respond ONLY with valid JSON."""
+
+
+def _normalise_mcq_question(q: dict, source_normalized: str, seen_stems: set[str]) -> Optional[dict]:
+    """Validate and normalise a multiple-choice question; None when unusable."""
+    options = q.get("options") or {}
+    correct_answer = str(q.get("correct_answer") or "").upper()
+    stem = str(q.get("question_text") or "").strip()
+    excerpt = str(q.get("source_excerpt") or "").strip()
+    stem_key = _normalised_source(stem)
+    if (
+        not stem or stem_key in seen_stems or correct_answer not in {"A", "B", "C", "D"}
+        or set(options) != {"A", "B", "C", "D"} or not all(str(v).strip() for v in options.values())
+        or len(excerpt) < 12 or _normalised_source(excerpt) not in source_normalized
+    ):
+        return None
+    return {
+        "question_text": stem, "question_type": "mcq",
+        "options": options, "correct_answer": correct_answer,
+        "explanation": str(q.get("explanation") or "").strip(),
+        "difficulty": q.get("difficulty", "medium"), "topic": q.get("topic", ""),
+        "question_style": q.get("question_style", "application"),
+        "depth_level": q.get("depth_level", "apply"),
+        "solution_steps": q.get("solution_steps", []), "source_excerpt": excerpt, "source": "ai",
+    }
+
+
+def _normalise_open_question(q: dict, source_normalized: str, seen_stems: set[str], assessment_type: str) -> Optional[dict]:
+    """Validate and normalise an open-ended (theory/essay) question; None when unusable."""
+    stem = str(q.get("question_text") or "").strip()
+    model_answer = str(q.get("model_answer") or q.get("explanation") or "").strip()
+    marking_points = q.get("marking_points") or q.get("solution_steps") or []
+    if not isinstance(marking_points, list):
+        marking_points = [marking_points]
+    marking_points = [str(point).strip() for point in marking_points if str(point).strip()]
+    excerpt = str(q.get("source_excerpt") or "").strip()
+    stem_key = _normalised_source(stem)
+    if (
+        not stem or stem_key in seen_stems or len(model_answer) < 40 or not marking_points
+        or len(excerpt) < 12 or _normalised_source(excerpt) not in source_normalized
+    ):
+        return None
+    return {
+        "question_text": stem, "question_type": assessment_type,
+        "options": None, "correct_answer": None,
+        "explanation": model_answer,
+        "difficulty": q.get("difficulty", "medium"), "topic": q.get("topic", ""),
+        "question_style": "theory",
+        "depth_level": q.get("depth_level", "analyze"),
+        "solution_steps": marking_points, "source_excerpt": excerpt, "source": "ai",
+    }
+
+
 async def generate_questions(
     pdf_text: str,
     course_code: str,
     course_title: str,
     week_number: int,
-    count: int = 20,
+    count: int = MCQ_QUESTION_COUNT,
     adaptive_context: Optional[dict[str, Any]] = None,
     course_id: Optional[str] = None,
+    assessment_type: str = "mcq",
 ) -> list[dict]:
     adaptive_context = adaptive_context or {}
+    assessment_type = normalise_assessment_type(assessment_type)
+    open_ended = is_open_ended(assessment_type)
     feedback_notes = await _recent_model_feedback(course_id, course_code, course_title)
 
     if len(pdf_text.strip()) < MIN_QUESTION_SOURCE_CHARS:
@@ -576,8 +646,18 @@ async def generate_questions(
         # Retry the same batch with successively smaller excerpt windows.
         for provider_attempt in range(3):
             try:
-                raw = await call_ai(
-                    QUESTION_PROMPT.format(
+                if open_ended:
+                    prompt = OPEN_QUESTION_PROMPT.format(
+                        count=requested, kind=assessment_type, course_code=course_code,
+                        course_title=course_title, week_number=week_number,
+                        guidance=OPEN_ENDED_GUIDANCE.get(assessment_type, OPEN_ENDED_GUIDANCE["theory"]),
+                        feedback_notes=feedback_notes, text=source_chunk,
+                    )
+                    # Open-ended model answers are long: request room without a cap
+                    # that would truncate the JSON mid-response.
+                    max_tokens = min(4000, max(1500, requested * 900))
+                else:
+                    prompt = QUESTION_PROMPT.format(
                         count=requested, course_code=course_code, course_title=course_title,
                         week_number=week_number,
                         is_formula_heavy=adaptive_context.get("is_formula_heavy", False),
@@ -586,10 +666,13 @@ async def generate_questions(
                         explanation_mode=adaptive_context.get("explanation_mode", "exam_style"),
                         topics=adaptive_context.get("topics", []), key_formulas=adaptive_context.get("key_formulas", []),
                         feedback_notes=feedback_notes, text=source_chunk,
-                    ),
-                    QUESTION_SYSTEM,
+                    )
                     # Small batches prevent a truncated response from turning 20 requested questions into one.
-                    max_tokens=min(3500, max(1200, requested * 650)),
+                    max_tokens = min(3500, max(1200, requested * 650))
+                raw = await call_ai(
+                    prompt,
+                    OPEN_QUESTION_SYSTEM if open_ended else QUESTION_SYSTEM,
+                    max_tokens=max_tokens,
                 )
                 data = json.loads(_clean_json(raw))
                 raw_questions = data.get("questions", [])
@@ -612,28 +695,16 @@ async def generate_questions(
 
         source_normalized = _normalised_source(source_chunk)
         for q in raw_questions if isinstance(raw_questions, list) else []:
-            options = q.get("options") or {}
-            correct_answer = str(q.get("correct_answer") or "").upper()
-            stem = str(q.get("question_text") or "").strip()
-            excerpt = str(q.get("source_excerpt") or "").strip()
-            stem_key = _normalised_source(stem)
-            if (
-                not stem or stem_key in seen_stems or correct_answer not in {"A", "B", "C", "D"}
-                or set(options) != {"A", "B", "C", "D"} or not all(str(v).strip() for v in options.values())
-                or len(excerpt) < 12 or _normalised_source(excerpt) not in source_normalized
-            ):
+            normalised = (
+                _normalise_open_question(q, source_normalized, seen_stems, assessment_type)
+                if open_ended
+                else _normalise_mcq_question(q, source_normalized, seen_stems)
+            )
+            if normalised is None:
                 logger.warning("Discarded an ungrounded, malformed, or duplicate AI question")
                 continue
-            seen_stems.add(stem_key)
-            questions.append({
-                "question_text": stem, "question_type": q.get("question_type", "mcq"),
-                "options": options, "correct_answer": correct_answer,
-                "explanation": str(q.get("explanation") or "").strip(),
-                "difficulty": q.get("difficulty", "medium"), "topic": q.get("topic", ""),
-                "question_style": q.get("question_style", "application"),
-                "depth_level": q.get("depth_level", "apply"),
-                "solution_steps": q.get("solution_steps", []), "source_excerpt": excerpt, "source": "ai",
-            })
+            seen_stems.add(_normalised_source(normalised["question_text"]))
+            questions.append(normalised)
             if len(questions) == count:
                 return questions
 
@@ -642,69 +713,53 @@ async def generate_questions(
     )
 
 
-# ── Full PDF Pipeline ──────────────────────────────────────────────────────
+# ── Staged PDF Pipeline ────────────────────────────────────────────────────
+# Split into explicit stages so each one can be persisted and retried on its
+# own. If extraction succeeds but a later AI stage fails, the extracted text is
+# kept and a retry resumes at the failed stage instead of re-reading the PDF and
+# re-paying for the whole pipeline.
 
-async def process_pdf_file(
-    file_path: str,
-    course_code: str,
-    course_title: str,
-    week_number: int,
-    question_count: int = 20,
-    course_id: Optional[str] = None,
-    generate_questions_for_pdf: bool = True,
-) -> dict:
-    text = extract_text_from_pdf(file_path)
-    text_len = len(text.strip())
-    logger.info(
-        "Extracted %s characters from PDF for %s week %s before AI prompt construction",
-        text_len,
-        course_code,
-        week_number,
-    )
-    if text_len < MIN_QUESTION_SOURCE_CHARS:
-        logger.error(
-            "PDF extraction produced insufficient text for %s week %s: %s chars from %s",
-            course_code,
-            week_number,
-            text_len,
-            file_path,
-        )
-        raise ValueError("PDF appears empty, unreadable, or too short for real question generation")
-
-    summary_data = await generate_summary(text)
+def build_adaptive_context(summary_data: dict, course_title: str) -> tuple[dict, dict]:
+    """Derive (profile, adaptive_context) from summary data plus local heuristics."""
     inferred_profile = infer_course_profile(
         course_title=course_title,
         topics=summary_data.get("topics", []),
         formulas=summary_data.get("key_formulas", []),
         key_points=summary_data.get("key_points", []),
     )
+    profile = summary_data.get("profile") or inferred_profile
     adaptive_context = {
-        "is_formula_heavy": (summary_data.get("profile") or {}).get("is_formula_heavy", inferred_profile.get("is_formula_heavy", False)),
-        "mix_targets": (summary_data.get("profile") or {}).get("mix_targets", inferred_profile.get("mix_targets", {"calculation": 25, "application": 40, "theory": 35})),
-        "difficulty_targets": (summary_data.get("profile") or {}).get("difficulty_targets", inferred_profile.get("difficulty_targets", {"easy": 30, "medium": 50, "hard": 20})),
-        "explanation_mode": (summary_data.get("profile") or {}).get("explanation_mode", inferred_profile.get("explanation_mode", "exam_style")),
+        "is_formula_heavy": profile.get("is_formula_heavy", inferred_profile.get("is_formula_heavy", False)),
+        "mix_targets": profile.get("mix_targets", inferred_profile.get("mix_targets", {"calculation": 25, "application": 40, "theory": 35})),
+        "difficulty_targets": profile.get("difficulty_targets", inferred_profile.get("difficulty_targets", {"easy": 30, "medium": 50, "hard": 20})),
+        "explanation_mode": profile.get("explanation_mode", inferred_profile.get("explanation_mode", "exam_style")),
         "topics": summary_data.get("topics", []),
         "key_formulas": summary_data.get("key_formulas", []),
     }
-    questions = (
-        await generate_questions(
-            text, course_code, course_title, week_number, question_count, adaptive_context, course_id
-        )
-        if generate_questions_for_pdf
-        else []
-    )
+    return profile, adaptive_context
 
-    return {
-        "text_length":   len(text),
-        "extracted_text": text,
-        "summary":       summary_data.get("summary", ""),
-        "key_points":    summary_data.get("key_points", []),
-        "key_formulas":  summary_data.get("key_formulas", []),
-        "formula_cards": summary_data.get("formula_cards", []),
-        "topics":        summary_data.get("topics", []),
-        "questions":     questions,
-        "profile":       summary_data.get("profile") or inferred_profile,
-    }
+
+def extract_pdf_text(file_path: str) -> str:
+    """Stage 1 — read the PDF. Raises if the extracted text is unusably short."""
+    text = extract_text_from_pdf(file_path)
+    text_len = len(text.strip())
+    if text_len < MIN_QUESTION_SOURCE_CHARS:
+        logger.error(
+            "PDF extraction produced insufficient text (%s chars) from %s",
+            text_len,
+            file_path,
+        )
+        raise ValueError(
+            "PDF appears empty, unreadable, or too short for real question generation"
+        )
+    return text
+
+
+async def analyze_pdf_text(text: str, course_title: str) -> tuple[dict, dict, dict]:
+    """Stage 2 — summarise + profile. Returns (summary_data, profile, adaptive_context)."""
+    summary_data = await generate_summary(text)
+    profile, adaptive_context = build_adaptive_context(summary_data, course_title)
+    return summary_data, profile, adaptive_context
 
 
 async def _recent_model_feedback(course_id: Optional[str], course_code: str, course_title: str, limit: int = 5) -> str:

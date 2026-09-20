@@ -31,13 +31,12 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "scholara_db"
 
-    # ── AI Provider (free tiers) ───────────────────────────────────────────
-    AI_PROVIDER: str = "groq"
+    # ── AI Provider (Groq, single provider by design) ──────────────────────
+    # Current supported model: openai/gpt-oss-20b. The retired
+    # llama-3.1-70b-versatile / llama-3.1-70b-instant models are no longer used,
+    # and there is intentionally no multi-provider fallback chain.
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-70b-versatile"
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
-    ALLOW_MOCK_QUESTION_GENERATION: bool = False  # only effective when AI_PROVIDER=mock and APP_ENV != production
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
 
     # ── SuperAdmin ────────────────────────────────────────────────────────
     SUPERADMIN_EMAIL: str = ""              # REQUIRED — must be set via .env
@@ -93,6 +92,10 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        # Ignore obsolete/unknown env vars (e.g. retired AI_PROVIDER / GEMINI_*,
+        # ALLOW_MOCK_QUESTION_GENERATION) so a stale deployment .env cannot stop
+        # the app from booting.
+        extra = "ignore"
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -110,10 +113,8 @@ class Settings(BaseSettings):
         if self.APP_ENV == "production":
             if not self.MONGODB_URL or self.MONGODB_URL == "mongodb://localhost:27017":
                 missing.append("MONGODB_URL (must be set for production)")
-            if self.AI_PROVIDER.lower() == "mock" or self.ALLOW_MOCK_QUESTION_GENERATION:
-                missing.append(
-                    "AI_PROVIDER/ALLOW_MOCK_QUESTION_GENERATION (mock mode is not allowed in production)"
-                )
+            if not self.GROQ_API_KEY:
+                missing.append("GROQ_API_KEY (required in production — no mock/fake fallback exists)")
 
         if missing:
             raise ValueError(

@@ -13,6 +13,7 @@ import {
 import clsx from "clsx";
 import { coursesApi } from "../../api/index";
 import type { Course, CoursePDF } from "../../types";
+import { formatBytes } from "../../utils/format";
 import toast from "react-hot-toast";
 
 interface PDFRowProps {
@@ -21,6 +22,24 @@ interface PDFRowProps {
   isAdmin: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+}
+
+// Human-readable labels for the backend processing stages so the admin can see
+// exactly what the worker is doing instead of a generic "Processing...".
+const STAGE_LABELS: Record<string, string> = {
+  extracting: "Reading PDF content",
+  analyzing: "Analyzing content",
+  generating: "Generating questions",
+  persisting: "Saving data",
+  done: "Completed",
+};
+
+function processingLabel(pdf: CoursePDF): string {
+  if (pdf.is_processed) return "Completed";
+  if (pdf.processing_status === "failed") return "Failed";
+  if (pdf.processing_status === "pending") return "Queued";
+  const stage = pdf.processing_stage ? STAGE_LABELS[pdf.processing_stage] : null;
+  return stage || "Starting...";
 }
 
 export default function PDFRow({ pdf, courseId, isAdmin, selected, onToggleSelect }: PDFRowProps) {
@@ -213,6 +232,12 @@ export default function PDFRow({ pdf, courseId, isAdmin, selected, onToggleSelec
         <div className="min-w-0 flex-1">
           <div className="text-cream-200/80 text-xs font-medium truncate">
             {pdf.original_name}
+            {formatBytes(pdf.file_size) && (
+              <span className="text-cream-200/30 font-normal">
+                {" "}
+                · {formatBytes(pdf.file_size)}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
             {editingWeek ? (
@@ -253,13 +278,19 @@ export default function PDFRow({ pdf, courseId, isAdmin, selected, onToggleSelec
               </>
             ) : (
               <>
-                <span className="text-cream-200/35 text-[10px]">
+                <span
+                  className={clsx(
+                    "text-[10px]",
+                    pdf.processing_status === "failed"
+                      ? "text-accent-coral/80"
+                      : pdf.is_processed
+                        ? "text-accent-sage/70"
+                        : "text-cream-200/45",
+                  )}
+                >
                   {pdf.is_course_material ? "Course material" : `Week ${pdf.week_number}`}
-                  {pdf.is_processed
-                    ? " · Processed"
-                    : pdf.processing_status === "failed"
-                      ? " · Processing failed"
-                      : " · Processing..."}
+                  {" · "}
+                  {processingLabel(pdf)}
                 </span>
                 {isAdmin && !pdf.is_course_material && (
                   <button
@@ -273,6 +304,14 @@ export default function PDFRow({ pdf, courseId, isAdmin, selected, onToggleSelec
               </>
             )}
           </div>
+          {pdf.processing_status === "failed" && pdf.processing_error && (
+            <div
+              className="text-accent-coral/70 text-[10px] mt-1 line-clamp-2"
+              title={pdf.processing_error}
+            >
+              {pdf.processing_error}
+            </div>
+          )}
         </div>
 
         {pdf.summary && (

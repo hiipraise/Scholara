@@ -6,13 +6,10 @@ PDF text and supplementary web references. Lessons are cached indefinitely
 in the course_lessons collection (admin-only regeneration).
 """
 import json
-import logging
 from typing import Any
 
-from app.services.ai_service import call_ai, clean_json, _mock_questions_allowed
+from app.services.ai_service import call_ai, clean_json
 from app.services.intelligence_service import duckduckgo_search
-
-logger = logging.getLogger(__name__)
 
 # ── Prompts ────────────────────────────────────────────────────────────────
 
@@ -78,13 +75,8 @@ async def generate_lesson(
 ) -> dict[str, Any]:
     """Generate a structured lesson for a course/week using AI.
 
-    Raises ValueError on failure — never synthesises placeholder content.
+    Raises on failure — never synthesises placeholder content.
     """
-    if _mock_questions_allowed():
-        raise ValueError(
-            "Mock mode is not supported for lesson generation — configure a real AI_PROVIDER."
-        )
-
     # Fetch supplementary web references
     try:
         refs = await duckduckgo_search(

@@ -170,11 +170,16 @@ async def stats(current_user: dict = Depends(get_current_user)):
     base = {"user_id": current_user["id"], "question_id": {"$in": qids}}
     total = await attempts_col().count_documents(base)
     correct = await attempts_col().count_documents({**base, "is_correct": True})
+    incorrect = await attempts_col().count_documents({**base, "is_correct": False})
+    # Essay/theory attempts are self-assessed, so they are excluded from the
+    # accuracy denominator instead of being counted as wrong.
+    graded = correct + incorrect
     return {
         "total_attempted": total,
         "total_correct": correct,
-        "accuracy": round(correct / total * 100, 1) if total else 0,
-        "total_incorrect": total - correct,
+        "accuracy": round(correct / graded * 100, 1) if graded else 0,
+        "total_incorrect": incorrect,
+        "total_graded": graded,
     }
 
 
@@ -279,6 +284,7 @@ async def progress_history(
         {"$group": {
             "_id": "$feed_date",
             "total": {"$sum": 1},
+            "graded": {"$sum": {"$cond": [{"$in": ["$is_correct", [True, False]]}, 1, 0]}},
             "correct": {"$sum": {"$cond": ["$is_correct", 1, 0]}},
         }},
         {"$sort": {"_id": 1}},
@@ -292,16 +298,18 @@ async def progress_history(
         g = by_date.get(d)
         if g:
             total = g["total"]
+            graded = g.get("graded", total)
             correct = g["correct"]
         else:
             total = 0
+            graded = 0
             correct = 0
         history.append({
             "date": d,
             "attempted": total,
             "correct": correct,
-            "incorrect": total - correct,
-            "accuracy": round(correct / total * 100, 1) if total else 0,
+            "incorrect": graded - correct,
+            "accuracy": round(correct / graded * 100, 1) if graded else 0,
         })
 
     return {"days": days, "history": history}
@@ -359,15 +367,18 @@ async def weak_links(current_user: dict = Depends(get_current_user)):
         {"$group": {
             "_id": {"course_id": "$q.course_id", "week_number": "$q.week_number"},
             "total": {"$sum": 1},
+            "graded": {"$sum": {"$cond": [{"$in": ["$is_correct", [True, False]]}, 1, 0]}},
             "correct": {"$sum": {"$cond": ["$is_correct", 1, 0]}},
         }},
     ]
 
     grouped = await attempts_col().aggregate(pipeline).to_list(None)
+    # Only weeks with at least one auto-graded (MCQ) attempt can be ranked.
+    grouped = [g for g in grouped if g.get("graded")]
 
     if grouped:
         for g in grouped:
-            g["accuracy"] = round((g["correct"] / g["total"]) * 100, 1) if g["total"] else 0
+            g["accuracy"] = round((g["correct"] / g["graded"]) * 100, 1) if g["graded"] else 0
         weakest = min(grouped, key=lambda x: x["accuracy"])
         strongest = max(grouped, key=lambda x: x["accuracy"])
 

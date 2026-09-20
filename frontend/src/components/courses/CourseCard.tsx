@@ -24,19 +24,28 @@ import clsx from "clsx";
 import { coursesApi } from "../../api/index";
 import { getApiErrorMessage } from "../../lib/apiError";
 import { getDownloadState } from "../../lib/contentDb";
-import type { Course, CoursePDF } from "../../types";
+import type { AssessmentType, Course, CoursePDF } from "../../types";
+import { formatBytes } from "../../utils/format";
 import PDFRow from "./PDFRow";
 import toast from "react-hot-toast";
 
 interface QueueItem {
   id: string;
   file: File;
+  size: number;
   week: number | null;
   isCourseMaterial: boolean;
   status: "pending" | "uploading" | "done" | "error";
   progress: number;
   errorMsg?: string;
 }
+
+const ASSESSMENT_OPTIONS: { value: AssessmentType; label: string }[] = [
+  { value: "mcq", label: "MCQ · 20 questions" },
+  { value: "mixed", label: "Mixed · 20 questions" },
+  { value: "theory", label: "Theory · 5 questions" },
+  { value: "essay", label: "Essay · 5 questions" },
+];
 
 interface CourseCardProps {
   course: Course;
@@ -72,6 +81,17 @@ export default function CourseCard({
     queryFn: () => coursesApi.getPdfs(course.id).then((r) => r.data),
     enabled: expanded,
     refetchInterval: expanded ? 8000 : false,
+  });
+
+  const updateAssessmentMutation = useMutation({
+    mutationFn: (assessmentType: AssessmentType) =>
+      coursesApi.updateAssessmentType(course.id, assessmentType),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["courses"] });
+      toast.success("Assessment type updated — applies to new uploads");
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.detail || "Failed to update assessment type"),
   });
 
   const deleteCourseMutation = useMutation({
@@ -118,6 +138,7 @@ export default function CourseCard({
     const newItems: QueueItem[] = files.map((file) => ({
       id: `${file.name}-${Date.now()}-${Math.random()}`,
       file,
+      size: file.size,
       week: isCourseMaterial ? null : 1,
       isCourseMaterial,
       status: "pending",
@@ -329,6 +350,19 @@ export default function CourseCard({
             <span className="text-cream-200/35 text-xs">
               {course.question_count} questions
             </span>
+            {course.assessment_type && course.assessment_type !== "mcq" && (
+              <span
+                className={clsx(
+                  "text-[9px] px-1.5 py-0.5 rounded-full border font-semibold uppercase tracking-wider",
+                  course.assessment_type === "theory" ||
+                    course.assessment_type === "essay"
+                    ? "bg-accent-gold/15 text-accent-gold border-accent-gold/20"
+                    : "bg-accent-sky/15 text-accent-sky border-accent-sky/20",
+                )}
+              >
+                {course.assessment_type}
+              </span>
+            )}
             {isOfflineAvailable && (
               <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-accent-sage/15 text-accent-sage border border-accent-sage/20 font-semibold uppercase tracking-wider">
                 <Download size={7} />
@@ -438,6 +472,41 @@ export default function CourseCard({
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-cream-200/35 uppercase tracking-wider text-[10px]">
+                      Assessment
+                    </span>
+                    <select
+                      value={course.assessment_type}
+                      onChange={(e) =>
+                        updateAssessmentMutation.mutate(
+                          e.target.value as AssessmentType,
+                        )
+                      }
+                      disabled={updateAssessmentMutation.isPending}
+                      className="input-field h-8 py-0 text-xs w-48"
+                      title="Assessment type — applies to new uploads"
+                    >
+                      {ASSESSMENT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {updateAssessmentMutation.isPending && (
+                      <Loader2
+                        size={12}
+                        className="animate-spin text-cream-200/40"
+                      />
+                    )}
+                    <span className="text-cream-200/25 text-[10px]">
+                      {course.assessment_type === "theory" ||
+                      course.assessment_type === "essay"
+                        ? "Max 5 questions per PDF"
+                        : "20 questions per PDF"}
+                    </span>
+                  </div>
+
                   {queue.length > 0 ? (
                     <div className="space-y-2">
                       {queue.map((item) => (
@@ -481,6 +550,12 @@ export default function CourseCard({
                           <div className="flex-1 min-w-0">
                             <div className="text-cream-200/75 text-xs font-medium truncate">
                               {item.file.name}
+                              {formatBytes(item.size) && (
+                                <span className="text-cream-200/30 font-normal">
+                                  {" "}
+                                  · {formatBytes(item.size)}
+                                </span>
+                              )}
                             </div>
                             {item.status === "uploading" && (
                               <div className="mt-1 h-1 bg-cream-200/10 rounded-full overflow-hidden">

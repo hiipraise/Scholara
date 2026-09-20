@@ -4,6 +4,9 @@ interface PracticeResultModalProps {
   open: boolean;
   customTotal: number;
   customCorrect: number;
+  /** Auto-graded (MCQ) answers, i.e. total minus self-assessed open-ended ones. */
+  customGraded?: number;
+  customSelfAssessed?: number;
   onClose: () => void;
   onBackToFeed: () => void;
 }
@@ -12,9 +15,12 @@ export default function PracticeResultModal({
   open,
   customTotal,
   customCorrect,
+  customGraded,
+  customSelfAssessed = 0,
   onClose,
   onBackToFeed,
 }: PracticeResultModalProps) {
+  const graded = customGraded ?? customTotal;
   return (
     <AnimatePresence>
       {open && (
@@ -60,13 +66,17 @@ export default function PracticeResultModal({
                     Accuracy
                   </div>
                   <div className="text-cream-200 font-mono text-lg">
-                    {customTotal
-                      ? Math.round((customCorrect / customTotal) * 100)
-                      : 0}
-                    %
+                    {graded ? Math.round((customCorrect / graded) * 100) : 0}%
                   </div>
                 </div>
               </div>
+              {customSelfAssessed > 0 && (
+                <p className="text-cream-200/40 text-xs -mt-2 mb-4">
+                  {customSelfAssessed} open-ended answer
+                  {customSelfAssessed === 1 ? "" : "s"} self-assessed against the
+                  model answer (excluded from accuracy).
+                </p>
+              )}
               <div className="flex justify-end gap-2">
                 <button className="btn-ghost text-sm" onClick={onClose}>
                   Review Questions

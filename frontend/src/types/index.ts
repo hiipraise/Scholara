@@ -10,6 +10,8 @@ export interface User {
   must_change_password?: boolean;
 }
 
+export type AssessmentType = "mcq" | "mixed" | "theory" | "essay";
+
 export interface Course {
   id: string;
   code: string;
@@ -17,6 +19,7 @@ export interface Course {
   level: string;
   semester: number;
   credit_units: number;
+  assessment_type: AssessmentType;
   pdf_count: number;
   question_count: number;
   weeks_uploaded: number[];
@@ -42,13 +45,17 @@ export interface Question {
   course_id: string;
   week_number: number;
   question_text: string;
-  question_type: "mcq" | "true_false";
+  // "essay"/"theory" are open-ended: no options, self-assessed against the model answer.
+  question_type: "mcq" | "essay" | "theory";
   options: Record<string, string> | null;
   difficulty: "easy" | "medium" | "hard";
   topic: string;
+  question_style?: "theory" | "application" | "calculation";
+  depth_level?: string;
   is_completed: boolean;
   correct_answer: string | null;
   explanation: string | null;
+  solution_steps?: string[];
 }
 
 export interface DailyFeed {
@@ -65,10 +72,13 @@ export interface DailyFeed {
 }
 
 export interface AnswerResult {
-  is_correct: boolean;
-  correct_answer: string;
+  // null for open-ended (essay/theory) questions, which are self-assessed.
+  is_correct: boolean | null;
+  correct_answer: string | null;
   explanation: string;
   question_id: string;
+  requires_self_assessment?: boolean;
+  solution_steps?: string[];
   feed_completed?: boolean;
   completed_count?: number;
   correct_count?: number;
@@ -76,13 +86,23 @@ export interface AnswerResult {
   total?: number;
 }
 
+export type ProcessingStage =
+  | "extracting"
+  | "analyzing"
+  | "generating"
+  | "persisting"
+  | "done";
+
 export interface CoursePDF {
   id: string;
   week_number: number | null;
   is_course_material?: boolean;
+  assessment_type?: AssessmentType;
   original_name: string;
+  file_size?: number;
   is_processed: boolean;
   processing_status?: "pending" | "claimed" | "processing" | "done" | "failed";
+  processing_stage?: ProcessingStage | null;
   processing_error?: string | null;
   summary: string | null;
   key_points: string[] | null;

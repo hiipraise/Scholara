@@ -275,6 +275,9 @@ async def list_jobs(admin: dict = Depends(get_admin_user)):
     counts = {"pending": 0, "processing": 0, "done": 0, "failed": 0}
     for doc in docs:
         status = doc.get("status", "pending")
+        # A claimed job is actively being worked on — surface it as processing.
+        if status == "claimed":
+            status = "processing"
         if status in counts:
             counts[status] += 1
     return {

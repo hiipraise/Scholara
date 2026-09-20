@@ -30,9 +30,9 @@ function sessionStoreRemove(key: string) {
 interface UseSessionBackupOptions {
   userId: string | undefined;
   customFeed: any | null;
-  practiceResults: Record<string, boolean>;
+  practiceResults: Record<string, boolean | null>;
   setCustomFeed: (feed: any) => void;
-  setPracticeResults: (results: Record<string, boolean>) => void;
+  setPracticeResults: (results: Record<string, boolean | null>) => void;
 }
 
 /**
@@ -58,7 +58,7 @@ export function useSessionBackup({
     try {
       const parsed = JSON.parse(raw) as {
         customFeed?: any;
-        practiceResults?: Record<string, boolean>;
+        practiceResults?: Record<string, boolean | null>;
       };
       if (parsed?.customFeed?.questions?.length) {
         setCustomFeed(parsed.customFeed);

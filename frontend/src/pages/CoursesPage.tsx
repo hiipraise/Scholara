@@ -6,7 +6,7 @@ import { BookOpen, Plus, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import { coursesApi } from "../api/index";
 import { useAuthStore } from "../store/authStore";
-import type { Course } from "../types";
+import type { AssessmentType } from "../types";
 import { COURSE_COLORS } from "../constants/courseColors";
 import CourseCard from "../components/courses/CourseCard";
 
@@ -22,6 +22,7 @@ export default function CoursesPage() {
     level: user?.level || "100L",
     semester: user?.semester || 1,
     credit_units: 3,
+    assessment_type: "mcq" as AssessmentType,
   });
 
   const { data: courses, isLoading } = useQuery({
@@ -187,6 +188,22 @@ export default function CoursesPage() {
                   min={1}
                   max={6}
                 />
+                <select
+                  value={newCourse.assessment_type}
+                  onChange={(e) =>
+                    setNewCourse({
+                      ...newCourse,
+                      assessment_type: e.target.value as AssessmentType,
+                    })
+                  }
+                  className="input-field"
+                  title="Assessment type"
+                >
+                  <option value="mcq">MCQ · 20 questions</option>
+                  <option value="mixed">Mixed · 20 questions</option>
+                  <option value="theory">Theory · 5 questions</option>
+                  <option value="essay">Essay · 5 questions</option>
+                </select>
               </div>
               <div className="flex gap-3">
                 <motion.button

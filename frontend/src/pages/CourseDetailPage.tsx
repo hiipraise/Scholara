@@ -21,6 +21,7 @@ import { COURSE_COLORS } from "../constants/courseColors";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useOfflineDownload } from "../hooks/useOfflineDownload";
 import { getDownloadState, type DownloadState } from "../lib/contentDb";
+import type { CoursePDF } from "../types";
 
 export default function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -53,10 +54,20 @@ export default function CourseDetailPage() {
   });
 
   // Fetch PDFs for this course
-  const { data: pdfs, isLoading: pdfsLoading } = useQuery({
+  const { data: pdfs } = useQuery({
     queryKey: ["course-pdfs", courseId],
     queryFn: () => coursesApi.getPdfs(courseId!).then((r) => r.data),
     enabled: !!courseId,
+    // Keep polling while any PDF is still being processed so the upload status
+    // updates on its own instead of appearing stuck.
+    refetchInterval: (query) => {
+      const data = query.state.data as CoursePDF[] | undefined;
+      return data?.some(
+        (p) => !p.is_processed && p.processing_status !== "failed",
+      )
+        ? 6000
+        : false;
+    },
   });
 
   const course = useMemo(
@@ -184,6 +195,11 @@ export default function CourseDetailPage() {
             <span className="text-cream-200/35 text-xs">
               {course.question_count} questions
             </span>
+            {course.assessment_type && course.assessment_type !== "mcq" && (
+              <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-accent-gold/15 text-accent-gold border border-accent-gold/20 font-semibold uppercase tracking-wider">
+                {course.assessment_type} assessment
+              </span>
+            )}
 
             {/* Offline download status */}
             {!checkingOffline && (

@@ -2,7 +2,14 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.services.ai_service import QuestionGenerationError, generate_questions
+from app.services.ai_service import (
+    QuestionGenerationError,
+    analyze_pdf_text,
+    build_adaptive_context,
+    extract_pdf_text,
+    generate_questions,
+    question_count_for,
+)
 
 
 SOURCE = ("Mitosis produces two genetically identical daughter cells after chromosome separation. " * 12)
@@ -16,6 +23,23 @@ def question(number: int) -> dict:
         "explanation": "The lecture states that mitosis produces two genetically identical daughter cells.",
         "source_excerpt": "Mitosis produces two genetically identical daughter cells after chromosome separation.",
         "solution_steps": ["Read the lecture statement.", "Select the matching answer."],
+    }
+
+
+def open_question(number: int) -> dict:
+    return {
+        "question_text": f"Explain the significance of mitosis in cell division ({number}).",
+        "model_answer": (
+            "Mitosis produces two genetically identical daughter cells after chromosome "
+            "separation, maintaining the chromosome number across cell generations."
+        ),
+        "marking_points": [
+            "States that two identical daughter cells form",
+            "Mentions chromosome separation",
+        ],
+        "source_excerpt": "Mitosis produces two genetically identical daughter cells after chromosome separation.",
+        "difficulty": "medium",
+        "topic": "Cell division",
     }
 
 
@@ -63,3 +87,61 @@ class QuestionGenerationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(1, len(questions))
         sleep.assert_awaited_once_with(1)
+
+    async def test_generates_open_ended_questions_for_theory_courses(self):
+        with patch("app.services.ai_service._recent_model_feedback", AsyncMock(return_value="none")), patch(
+            "app.services.ai_service.call_ai",
+            AsyncMock(return_value=json.dumps({"questions": [open_question(1)]})),
+        ):
+            questions = await generate_questions(
+                SOURCE, "BIO101", "Biology", 1, count=1, assessment_type="theory"
+            )
+
+        self.assertEqual(1, len(questions))
+        self.assertEqual("theory", questions[0]["question_type"])
+        self.assertIsNone(questions[0]["options"])
+        self.assertIsNone(questions[0]["correct_answer"])
+        self.assertTrue(questions[0]["explanation"])
+        self.assertTrue(questions[0]["solution_steps"])
+
+    def test_open_ended_assessments_are_capped_at_five_questions(self):
+        self.assertEqual(5, question_count_for("theory"))
+        self.assertEqual(5, question_count_for("essay"))
+        self.assertEqual(20, question_count_for("mcq"))
+        self.assertEqual(20, question_count_for("mixed"))
+        # Unknown values fall back to the MCQ default.
+        self.assertEqual(20, question_count_for("something-else"))
+
+    def test_extract_stage_rejects_unreadable_pdf_text(self):
+        with patch(
+            "app.services.ai_service.extract_text_from_pdf",
+            return_value="too short to be a lecture",
+        ):
+            with self.assertRaises(ValueError):
+                extract_pdf_text("lecture.pdf")
+
+    async def test_analysis_failure_raises_instead_of_faking_content(self):
+        # Once extraction succeeds, a provider failure during analysis must raise
+        # (so the stage can be retried) — never fall back to placeholder content.
+        with patch(
+            "app.services.ai_service.call_ai",
+            AsyncMock(side_effect=RuntimeError("groq unavailable")),
+        ):
+            with self.assertRaises(RuntimeError):
+                await analyze_pdf_text(SOURCE, "Biology")
+
+    def test_build_adaptive_context_uses_supplied_profile(self):
+        summary = {
+            "topics": ["Algebra"],
+            "key_formulas": ["x = y"],
+            "key_points": ["Solve for x"],
+            "profile": {
+                "is_formula_heavy": True,
+                "mix_targets": {"calculation": 60, "application": 20, "theory": 20},
+            },
+        }
+        _profile, context = build_adaptive_context(summary, "Maths")
+
+        self.assertTrue(context["is_formula_heavy"])
+        self.assertEqual(60, context["mix_targets"]["calculation"])
+        self.assertEqual(["Algebra"], context["topics"])

@@ -331,14 +331,22 @@ async def _feed_response(feed: dict | None, user_id: str) -> dict:
     docs = await questions_col().find({"_id": {"$in": valid_oids}, "is_active": True}).to_list(None)
     qmap = {str(d["_id"]): d for d in docs}
 
+    # One query for every open flag instead of one per question.
+    flagged_ids = {
+        doc["question_id"]
+        async for doc in question_flags_col().find(
+            {"user_id": user_id, "question_id": {"$in": qids}, "status": "open"},
+            {"question_id": 1},
+        )
+    }
+
     questions = []
     for qid in qids:
         q = qmap.get(qid)
         if not q:
             continue
         # Skip questions the user has flagged (open status)
-        flagged = await question_flags_col().find_one({"user_id": user_id, "question_id": qid, "status": "open"})
-        if flagged:
+        if qid in flagged_ids:
             continue
         is_done = qid in completed
         questions.append({
@@ -448,14 +456,20 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
     if not q:
         raise ValueError("Question not found")
 
-    is_correct = selected.upper() == q["correct_answer"].upper()
+    correct_answer = q.get("correct_answer")
+    # Open-ended questions (essay/theory) have no single correct option. The
+    # written attempt is recorded but not auto-graded — the model answer is
+    # revealed for self-assessment instead.
+    is_open_ended = not correct_answer
+    is_correct = None if is_open_ended else selected.strip().upper() == str(correct_answer).upper()
     today_str  = date.today().isoformat()
 
     await attempts_col().insert_one({
         "user_id": user_id,
         "question_id": question_id,
-        "selected_answer": selected.upper(),
+        "selected_answer": (selected or "").strip(),
         "is_correct": is_correct,
+        "graded": not is_open_ended,
         "feed_date": today_str,
     })
 
@@ -495,9 +509,11 @@ async def submit_answer(user_id: str, question_id: str, selected: str) -> dict:
 
     return {
         "is_correct": is_correct,
-        "correct_answer": q["correct_answer"],
+        "correct_answer": correct_answer,
         "explanation": q.get("explanation", ""),
         "question_id": question_id,
+        "requires_self_assessment": is_open_ended,
+        "solution_steps": q.get("solution_steps", []),
         "feed_completed": feed_completed,
         "completed_count": completed_count,
         "correct_count": min(correct_count, completed_count),

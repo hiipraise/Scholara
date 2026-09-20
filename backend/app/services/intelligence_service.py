@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import asyncio
 import html as html_lib
-import logging
 import re
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import Any
@@ -105,7 +105,7 @@ async def duckduckgo_search(query: str, limit: int = 3) -> list[dict[str, str]]:
 
 async def _duckduckgo_search(query: str, limit: int = 3) -> list[dict[str, str]]:
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    async with httpx.AsyncClient(timeout=20, headers=headers, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=10, headers=headers, follow_redirects=True) as client:
         response = await client.get(_DDG_URL, params={"q": query})
         response.raise_for_status()
 
@@ -138,14 +138,19 @@ async def build_deep_dive_notes(
     if not anchors:
         anchors = [course_title]
 
-    notes: list[dict[str, Any]] = []
-    for anchor in anchors:
-        query = f'{course_title} {anchor}'
+    # The searches are independent — run them concurrently. Sequentially this
+    # added up to ~30-60s to every PDF job; concurrently it is bounded by a
+    # single (short-timeout) request.
+    async def _refs_for(anchor: str) -> list[dict[str, str]]:
         try:
-            refs = await _duckduckgo_search(query, limit=3)
+            return await _duckduckgo_search(f'{course_title} {anchor}', limit=3)
         except Exception:
-            refs = []
+            return []
 
+    all_refs = await asyncio.gather(*(_refs_for(anchor) for anchor in anchors))
+
+    notes: list[dict[str, Any]] = []
+    for anchor, refs in zip(anchors, all_refs):
         if refs:
             summary_lines = []
             for ref in refs[:2]:

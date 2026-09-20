@@ -4,6 +4,7 @@ import type {
   DailyFeed,
   AnswerResult,
   FeedProgress,
+  AssessmentType,
   Course,
   CoursePDF,
   ExamSlot,
@@ -41,6 +42,7 @@ export const feedApi = {
       total_correct: number;
       accuracy: number;
       total_incorrect: number;
+      total_graded?: number;
     }>("/feed/stats"),
 
   getHistory: (days = 14) =>
@@ -74,7 +76,10 @@ export const coursesApi = {
     level: string;
     semester: number;
     credit_units?: number;
+    assessment_type?: AssessmentType;
   }) => apiClient.post("/courses/", data),
+  updateAssessmentType: (courseId: string, assessment_type: AssessmentType) =>
+    apiClient.patch(`/courses/${courseId}`, { assessment_type }),
   deleteCourse: (courseId: string) => apiClient.delete(`/courses/${courseId}`),
   getPdfs: (courseId: string) =>
     apiClient.get<CoursePDF[]>(`/courses/${courseId}/pdfs`),

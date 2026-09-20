@@ -41,7 +41,7 @@ export default function HomePage() {
   const [practiceWeek, setPracticeWeek] = useState<number | null>(null);
   const [customFeed, setCustomFeed] = useState<any | null>(null);
   const [practiceResults, setPracticeResults] = useState<
-    Record<string, boolean>
+    Record<string, boolean | null>
   >({});
   const [hiddenQuestionIds, setHiddenQuestionIds] = useState<string[]>([]);
   const [showPracticeResultModal, setShowPracticeResultModal] = useState(false);
@@ -180,6 +180,12 @@ export default function HomePage() {
   const customDone =
     customFeed?.questions?.filter((q: Question) => q.is_completed).length ?? 0;
   const customCorrect = Object.values(practiceResults).filter(Boolean).length;
+  // Open-ended (essay/theory) answers are self-assessed, so they are shown
+  // separately and excluded from the accuracy denominator.
+  const customSelfAssessed = Object.values(practiceResults).filter(
+    (value) => value === null,
+  ).length;
+  const customGraded = customTotal - customSelfAssessed;
   const shouldHideFlaggedLocally = Boolean(customFeed);
 
   const activeQuestions: Question[] = useMemo(() => {
@@ -572,6 +578,8 @@ export default function HomePage() {
         open={showPracticeResultModal && Boolean(customFeed)}
         customTotal={customTotal}
         customCorrect={customCorrect}
+        customGraded={customGraded}
+        customSelfAssessed={customSelfAssessed}
         onClose={() => setShowPracticeResultModal(false)}
         onBackToFeed={() => {
           setCustomFeed(null);

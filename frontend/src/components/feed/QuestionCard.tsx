@@ -7,10 +7,11 @@ import {
   ChevronDown,
   ChevronUp,
   BookOpen,
+  Eye,
   Flag,
+  Loader2,
   MessageSquareText,
   RotateCcw,
-  WifiOff,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Question, AnswerResult } from "../../types";
@@ -48,6 +49,7 @@ export default function QuestionCard({
   onFlagged,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [written, setWritten] = useState("");
   const [result, setResult] = useState<AnswerResult | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,7 +60,9 @@ export default function QuestionCard({
   const [flagReason, setFlagReason] = useState("");
 
   const isAnswered = question.is_completed || !!result;
-  const correctAnswer = result?.correct_answer || question.correct_answer;
+  const correctAnswer = result?.correct_answer ?? question.correct_answer ?? null;
+  // Essay/theory questions have no options and are self-assessed against the model answer.
+  const isOpenEnded = question.question_type !== "mcq" || !question.options;
 
   async function handleSelect(key: string) {
     if (isAnswered || loading) return;
@@ -124,6 +128,41 @@ export default function QuestionCard({
     }
   }
 
+  async function handleReveal() {
+    if (isAnswered || loading) return;
+    const attempt = written.trim();
+    if (!attempt) {
+      toast.error("Write your answer before revealing the model answer");
+      return;
+    }
+    setLoading(true);
+    try {
+      if (!navigator.onLine) {
+        await enqueueAnswer(question.id, attempt);
+        const localResult: AnswerResult = {
+          is_correct: null,
+          correct_answer: null,
+          explanation:
+            "Your answer has been saved and will be submitted when you're back online. The model answer will appear then.",
+          question_id: question.id,
+          requires_self_assessment: true,
+        };
+        setResult(localResult);
+        onAnswered?.(localResult);
+        toast.success("Answer saved offline — will sync when connected", { duration: 2000 });
+        return;
+      }
+      const res = await feedApi.submitAnswer(question.id, attempt);
+      setResult(res.data);
+      setShowExplanation(true);
+      onAnswered?.(res.data);
+    } catch {
+      toast.error("Failed to record your answer");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleFlagQuestion(reason?: string) {
     if (flagging || isFlagged) return;
     setFlagging(true);
@@ -164,8 +203,10 @@ export default function QuestionCard({
   }
 
   const explanation = result?.explanation || question.explanation;
-  const isCorrect =
-    result?.is_correct ?? (isAnswered && selected === correctAnswer);
+  const markingPoints = result?.solution_steps ?? question.solution_steps ?? [];
+  const isCorrect: boolean | null = isOpenEnded
+    ? result?.is_correct ?? null
+    : result?.is_correct ?? (isAnswered && selected === correctAnswer);
 
   return (
     <motion.div
@@ -238,10 +279,16 @@ export default function QuestionCard({
             <div
               className={clsx(
                 "w-5 h-5 rounded-full flex items-center justify-center",
-                isCorrect ? "bg-accent-sage/20" : "bg-accent-coral/20",
+                isCorrect === null
+                  ? "bg-accent-sky/15"
+                  : isCorrect
+                    ? "bg-accent-sage/20"
+                    : "bg-accent-coral/20",
               )}
             >
-              {isCorrect ? (
+              {isCorrect === null ? (
+                <BookOpen size={12} className="text-accent-sky" />
+              ) : isCorrect ? (
                 <CheckCircle size={13} className="text-accent-sage" />
               ) : (
                 <XCircle size={13} className="text-accent-coral" />
@@ -329,14 +376,50 @@ export default function QuestionCard({
         {question.question_text}
       </p>
 
+      {/* Open-ended answer (essay/theory) */}
+      {isOpenEnded && (
+        <div className="space-y-3">
+          {!isAnswered ? (
+            <>
+              <textarea
+                value={written}
+                onChange={(e) => setWritten(e.target.value)}
+                rows={4}
+                placeholder="Write your answer here..."
+                className="input-field text-sm resize-none"
+                disabled={loading}
+              />
+              <button
+                onClick={handleReveal}
+                disabled={loading || !written.trim()}
+                className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Eye size={14} />
+                )}
+                {loading ? "Recording..." : "Reveal model answer"}
+              </button>
+            </>
+          ) : (
+            <div className="rounded-xl border border-cream-200/10 bg-cream-200/4 p-3">
+              <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                Your answer
+              </div>
+              <p className="text-cream-200/65 text-sm whitespace-pre-wrap">
+                {written.trim() || "—"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Options */}
       {question.options && (
         <div className="space-y-2">
           {OPTION_KEYS.filter((k) => question.options?.[k]).map((key) => {
             const optionText = question.options![key];
-            const isSelected =
-              selected === key ||
-              (isAnswered && question.correct_answer === key && !result);
             const isCorrectOpt = isAnswered && key === correctAnswer;
             const isWrongSelected =
               isAnswered && key === selected && !isCorrectOpt;
@@ -407,7 +490,7 @@ export default function QuestionCard({
                 className="flex items-center gap-2 text-cream-200/40 hover:text-cream-200/70 text-xs font-medium transition-colors"
               >
                 <BookOpen size={13} />
-                Explanation
+                {isOpenEnded ? "Model answer" : "Explanation"}
                 {showExplanation ? (
                   <ChevronUp size={13} />
                 ) : (
@@ -416,14 +499,34 @@ export default function QuestionCard({
               </button>
               <AnimatePresence>
                 {showExplanation && (
-                  <motion.p
+                  <motion.div
                     initial={{ opacity: 0, height: 0, marginTop: 0 }}
                     animate={{ opacity: 1, height: "auto", marginTop: 8 }}
                     exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                    className="text-cream-200/55 text-sm leading-relaxed overflow-hidden"
+                    className="overflow-hidden"
                   >
-                    {explanation}
-                  </motion.p>
+                    <p className="text-cream-200/55 text-sm leading-relaxed">
+                      {explanation}
+                    </p>
+                    {isOpenEnded && markingPoints.length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-cream-200/30 text-[10px] uppercase tracking-wider mb-1">
+                          Marking points
+                        </div>
+                        <ul className="space-y-1">
+                          {markingPoints.map((point, i) => (
+                            <li
+                              key={i}
+                              className="text-cream-200/50 text-sm flex items-start gap-2"
+                            >
+                              <span className="text-accent-gold/60 mt-0.5">—</span>
+                              {point}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>
