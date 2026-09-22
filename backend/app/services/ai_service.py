@@ -148,6 +148,61 @@ def clean_json(raw: str) -> str:
     return _clean_json(raw)
 
 
+def _escape_invalid_json_backslashes(raw: str) -> str:
+    """Make bare backslashes in JSON strings safe for ``json.loads``.
+
+    Models frequently emit LaTex such as ``\\frac`` or ``\\(x\\)`` inside a
+    JSON string.  Those are not JSON escape sequences, so Python correctly
+    rejects the otherwise valid response with ``Invalid \\escape``.  Preserve
+    recognised JSON escapes and escape only the invalid backslashes.
+    """
+    result: list[str] = []
+    in_string = False
+    index = 0
+    valid_simple_escapes = {'"', "\\", "/", "b", "f", "n", "r", "t"}
+    latex_commands = (
+        "alpha", "beta", "begin", "cdot", "delta", "epsilon", "frac",
+        "gamma", "lambda", "left", "mu", "nabla", "neq", "not", "omega",
+        "phi", "pi", "right", "sigma", "sqrt", "sum", "tau", "text",
+        "theta", "times", "mathbf", "mathrm",
+    )
+
+    while index < len(raw):
+        char = raw[index]
+        if not in_string:
+            result.append(char)
+            if char == '"':
+                in_string = True
+            index += 1
+            continue
+
+        if char == '"':
+            result.append(char)
+            in_string = False
+            index += 1
+            continue
+
+        if char != "\\":
+            result.append(char)
+            index += 1
+            continue
+
+        next_char = raw[index + 1] if index + 1 < len(raw) else ""
+        is_unicode_escape = (
+            next_char == "u"
+            and index + 5 < len(raw)
+            and all(hex_char in "0123456789abcdefABCDEF" for hex_char in raw[index + 2:index + 6])
+        )
+        is_latex_command = any(raw.startswith(f"\\{command}", index) for command in latex_commands)
+        if (next_char in valid_simple_escapes and not is_latex_command) or is_unicode_escape:
+            result.append(char)
+        else:
+            result.append("\\\\")
+        index += 1
+
+    return "".join(result)
+
+
 def _salvage_truncated_json(raw: str) -> Optional[str]:
     """Best-effort repair of JSON truncated mid-output (e.g. max_tokens hit).
 
@@ -235,8 +290,17 @@ def _clean_json(raw: str) -> str:
     except json.JSONDecodeError:
         pass
 
+    # Repair common model output such as ``"formula": "\\frac{a}{b}"``.
+    # A second parse ensures we only return a repair that is valid JSON.
+    escaped_backslashes = _escape_invalid_json_backslashes(raw)
+    try:
+        json.loads(escaped_backslashes)
+        return escaped_backslashes
+    except json.JSONDecodeError:
+        pass
+
     # Extract the outermost JSON value, repairing truncation if possible.
-    salvaged = _salvage_truncated_json(raw)
+    salvaged = _salvage_truncated_json(escaped_backslashes)
     if salvaged is not None:
         return salvaged
 
