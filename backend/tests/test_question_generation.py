@@ -88,6 +88,23 @@ class QuestionGenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, len(questions))
         sleep.assert_awaited_once_with(1)
 
+    async def test_accepts_model_json_with_unescaped_latex_backslashes(self):
+        malformed_json = json.dumps({"questions": [question(1)]})
+        malformed_json = malformed_json.replace(
+            "Two identical daughter cells form", r"\\frac{a}{b} identical daughter cells form", 1
+        )
+        # Simulate a model writing LaTex directly into JSON rather than using
+        # the required doubled JSON backslash.
+        malformed_json = malformed_json.replace(r"\\\\frac", r"\\frac")
+
+        with patch("app.services.ai_service._recent_model_feedback", AsyncMock(return_value="none")), patch(
+            "app.services.ai_service.call_ai", AsyncMock(return_value=malformed_json)
+        ):
+            questions = await generate_questions(SOURCE, "BIO101", "Biology", 1, count=1)
+
+        self.assertEqual(1, len(questions))
+        self.assertIn(r"\frac{a}{b}", questions[0]["options"]["A"])
+
     async def test_generates_open_ended_questions_for_theory_courses(self):
         with patch("app.services.ai_service._recent_model_feedback", AsyncMock(return_value="none")), patch(
             "app.services.ai_service.call_ai",
